@@ -255,6 +255,56 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activeModal = modalError
 		return m, nil
 
+	case shared.NodeActionRequestMsg:
+		// Child view wants to show a confirm modal for a node action.
+		shared.Debugf("[app] node action request: %s on %v", msg.Action, msg.NodeHostnames)
+		nodes := make([]modal.NodeRef, len(msg.NodeHostnames))
+		hasCP := false
+		for i, h := range msg.NodeHostnames {
+			isCP := false
+			if i < len(msg.IsControlPlane) {
+				isCP = msg.IsControlPlane[i]
+			}
+			name := h
+			if i < len(msg.NodeNames) {
+				name = msg.NodeNames[i]
+			}
+			nodes[i] = modal.NodeRef{ID: h, Name: name, IsControlPlane: isCP}
+			if isCP {
+				hasCP = true
+			}
+		}
+		_ = hasCP
+		if len(nodes) == 1 {
+			m.confirm = modal.NewConfirm(msg.Action, nodes[0].ID)
+		} else {
+			m.confirm = modal.NewBulkConfirm(msg.Action, nodes)
+		}
+		m.confirm.SetSize(m.width, m.height)
+		m.activeModal = modalConfirm
+		return m, nil
+
+	case shared.ServiceRestartRequestMsg:
+		// Child view wants to show a service restart confirm modal.
+		shared.Debugf("[app] service restart request: %s on %s", msg.ServiceID, msg.Node)
+		m.confirm = modal.NewServiceRestartConfirm(msg.Node, msg.ServiceID, msg.ServiceID)
+		m.confirm.SetSize(m.width, m.height)
+		m.activeModal = modalConfirm
+		return m, nil
+
+	case shared.ViewChangeMsg:
+		// Child view wants to exit (ignored at top level -- no parent to go back to)
+		return m, nil
+
+	case shared.LogLineMsg, shared.LogStreamEndedMsg:
+		// Always route log messages to the logviewer, even if it's not active.
+		if m.tabInited[3] {
+			var cmd tea.Cmd
+			m.logViewer, cmd = m.logViewer.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case shared.TickMsg:
 		m2, viewCmd := m.updateAllViews(msg)
 		return m2, tea.Batch(viewCmd, m.refreshTickCmd())

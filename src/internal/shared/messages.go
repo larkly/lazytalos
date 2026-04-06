@@ -47,3 +47,21 @@ type LogStreamEndedMsg struct {
 	Service string
 	Err     error // nil on clean close
 }
+
+// NodeActionRequestMsg is sent by a child view when it wants the root app
+// to show a confirm modal for a node action.
+type NodeActionRequestMsg struct {
+	Action         string
+	NodeHostnames  []string
+	NodeNames      []string // display names (may differ from hostnames)
+	IsControlPlane []bool   // per-node control plane flag
+}
+
+// ServiceRestartRequestMsg is sent by a child view to request a service restart confirmation.
+type ServiceRestartRequestMsg struct {
+	Node      string
+	ServiceID string
+}
+
+// ViewChangeMsg is sent by a child view when it wants to exit (e.g., Esc from nodes tab).
+type ViewChangeMsg struct{}
