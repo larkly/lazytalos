@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbletea/v2"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
+	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
 )
 
 func (m Model) rebootNodes(nodes []string) tea.Cmd {
@@ -73,17 +74,7 @@ func (m Model) restartService(node, serviceID string) tea.Cmd {
 	}
 }
 
-// nodeContext creates a context with node metadata set for the Talos client.
+// nodeContext returns a context targeting a specific Talos node.
 func nodeContext(ctx context.Context, node string) context.Context {
-	// The Talos machinery client uses gRPC metadata to target specific nodes.
-	// We use the client's WithNode helper via context metadata.
-	md := map[string]string{"nodes": node}
-	return contextWithMetadata(ctx, md)
-}
-
-// contextWithMetadata adds gRPC metadata to a context for Talos client calls.
-func contextWithMetadata(ctx context.Context, md map[string]string) context.Context {
-	// Use the google.golang.org/grpc/metadata package to add node targeting.
-	// The Talos client expects "nodes" key in outgoing gRPC metadata.
-	return ctx // stub: will be implemented with proper gRPC metadata in later tasks
+	return talosclient.WithNodes(ctx, node)
 }

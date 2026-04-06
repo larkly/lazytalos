@@ -45,28 +45,28 @@ func (m Model) updateAllViews(msg tea.Msg) (Model, tea.Cmd) {
 
 	if m.view == viewContextPicker {
 		m.contextPicker, cmd = m.contextPicker.Update(msg)
+		return m, cmd
+	}
+
+	if m.tabInited[0] {
+		m.dashboard, cmd = m.dashboard.Update(msg)
 		cmds = append(cmds, cmd)
-		return m, tea.Batch(cmds...)
 	}
-
-	// Route to active tab's view
-	if m.activeTab >= 0 && m.activeTab < len(m.tabs) && m.tabInited[m.activeTab] {
-		switch m.tabs[m.activeTab].Key {
-		case "dashboard":
-			m.dashboard, cmd = m.dashboard.Update(msg)
-			cmds = append(cmds, cmd)
-		case "nodes":
-			m.nodeList, cmd = m.nodeList.Update(msg)
-			cmds = append(cmds, cmd)
-		case "services":
-			m.serviceList, cmd = m.serviceList.Update(msg)
-			cmds = append(cmds, cmd)
-		case "logs":
-			m.logViewer, cmd = m.logViewer.Update(msg)
-			cmds = append(cmds, cmd)
-		}
+	if m.tabInited[1] {
+		m.nodeList, cmd = m.nodeList.Update(msg)
+		cmds = append(cmds, cmd)
 	}
-
+	if m.tabInited[2] {
+		m.serviceList, cmd = m.serviceList.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	if m.tabInited[3] {
+		// Note: logViewer is stream-driven, not poll-driven.
+		// Still route TickMsg to it so it can handle window-resize and other
+		// non-tick messages dispatched via updateAllViews.
+		m.logViewer, cmd = m.logViewer.Update(msg)
+		cmds = append(cmds, cmd)
+	}
 	return m, tea.Batch(cmds...)
 }
 

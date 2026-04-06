@@ -18,10 +18,11 @@ type NodeRef struct {
 
 // ConfirmAction is the result of a confirmation dialog.
 type ConfirmAction struct {
-	Action  string
-	Node    string    // for single-node actions
-	Nodes   []NodeRef // for bulk actions
-	Confirm bool
+	Action    string
+	Node      string    // for single-node actions
+	Nodes     []NodeRef // for bulk actions
+	ServiceID string    // for "restart service" actions
+	Confirm   bool
 }
 
 // ConfirmModel is a confirmation dialog.
@@ -29,6 +30,7 @@ type ConfirmModel struct {
 	Action          string
 	Node            string    // for single-node actions
 	Nodes           []NodeRef // for bulk actions
+	ServiceID       string    // for "restart service" actions
 	HasControlPlane bool      // true if any selected node is a control plane node
 	Body            string    // custom body text (overrides default)
 	Title           string    // custom title (overrides default)
@@ -43,6 +45,17 @@ func NewConfirm(action, node string) ConfirmModel {
 		Action:  action,
 		Node:    node,
 		focused: 1, // default to cancel for safety
+	}
+}
+
+// NewServiceRestartConfirm creates a confirmation dialog for restarting a service on a node.
+func NewServiceRestartConfirm(node, serviceID, displayName string) ConfirmModel {
+	return ConfirmModel{
+		Action:    "restart service",
+		Node:      node,
+		ServiceID: serviceID,
+		Body:      fmt.Sprintf("Are you sure you want to restart service %q on node %q?", displayName, node),
+		focused:   1, // default to cancel for safety
 	}
 }
 
@@ -68,10 +81,11 @@ func (m ConfirmModel) confirmMsg() tea.Cmd {
 	shared.Debugf("[confirm] confirmed action=%s node=%q", m.Action, m.Node)
 	return func() tea.Msg {
 		return ConfirmAction{
-			Action:  m.Action,
-			Node:    m.Node,
-			Nodes:   m.Nodes,
-			Confirm: true,
+			Action:    m.Action,
+			Node:      m.Node,
+			Nodes:     m.Nodes,
+			ServiceID: m.ServiceID,
+			Confirm:   true,
 		}
 	}
 }
@@ -80,10 +94,11 @@ func (m ConfirmModel) cancelMsg() tea.Cmd {
 	shared.Debugf("[confirm] cancelled action=%s node=%q", m.Action, m.Node)
 	return func() tea.Msg {
 		return ConfirmAction{
-			Action:  m.Action,
-			Node:    m.Node,
-			Nodes:   m.Nodes,
-			Confirm: false,
+			Action:    m.Action,
+			Node:      m.Node,
+			Nodes:     m.Nodes,
+			ServiceID: m.ServiceID,
+			Confirm:   false,
 		}
 	}
 }

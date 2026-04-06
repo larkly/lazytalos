@@ -277,6 +277,10 @@ func (m Model) handleConfirmedAction(action modal.ConfirmAction) (Model, tea.Cmd
 		return m, m.rebootNodes(nodes)
 	case "shutdown":
 		return m, m.shutdownNodes(nodes)
+	case "restart service":
+		if action.Node != "" && action.ServiceID != "" {
+			return m, m.restartService(action.Node, action.ServiceID)
+		}
 	}
 	return m, nil
 }
