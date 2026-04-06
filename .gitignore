@@ -1,0 +1,23 @@
+# Build output
+src/lazytalos
+
+# Test cache
+*.test
+
+# Secrets
+.secret/
+
+# Worktrees
+.worktrees/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Go
+src/vendor/
