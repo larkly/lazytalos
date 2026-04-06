@@ -1,0 +1,18 @@
+name: lazytalos
+arch: ${NFPM_ARCH}
+platform: linux
+version: ${VERSION}
+release: "1"
+section: utils
+priority: optional
+maintainer: larkly
+description: A keyboard-driven terminal UI for Talos Linux
+vendor: larkly
+homepage: https://github.com/larkly/lazytalos
+license: Apache-2.0
+
+contents:
+  - src: lazytalos
+    dst: /usr/bin/lazytalos
+    file_info:
+      mode: 0755
