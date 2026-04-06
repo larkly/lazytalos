@@ -12,19 +12,21 @@ var version = "dev"
 func main() {
 	var (
 		talosconfig string
-		context     string
+		contextFlag string
 		refresh     int
 		plain       bool
 		debug       bool
 		showVersion bool
+		pickContext bool
 	)
 
 	flag.StringVar(&talosconfig, "talosconfig", "", "path to talosconfig (default: $TALOSCONFIG env var, then ~/.talos/config)")
-	flag.StringVar(&context, "context", "", "use specific context from talosconfig")
+	flag.StringVar(&contextFlag, "context", "", "use specific context from talosconfig")
 	flag.IntVar(&refresh, "refresh", 5, "auto-refresh interval in seconds")
 	flag.BoolVar(&plain, "plain", false, "disable Unicode status icons")
 	flag.BoolVar(&debug, "debug", false, "write debug log to ~/.cache/lazytalos/debug.log")
 	flag.BoolVar(&showVersion, "version", false, "print version and exit")
+	flag.BoolVar(&pickContext, "pick-context", false, "force showing the context picker even when only one context is configured")
 	flag.Parse()
 
 	if showVersion {
@@ -45,11 +47,12 @@ func main() {
 		talosconfig = filepath.Join(home, ".talos", "config")
 	}
 
-	_ = context
+	_ = contextFlag
 	_ = refresh
 	_ = plain
 	_ = debug
 	_ = talosconfig
+	_ = pickContext
 
 	// TODO: initialize app
 	fmt.Println("lazytalos", version)
