@@ -1,7 +1,7 @@
 package talos
 
 import (
-	"sort"
+	"slices"
 
 	"github.com/siderolabs/talos/pkg/machinery/client/config"
 )
@@ -19,7 +19,7 @@ func ListContextNames(talosconfig string) ([]string, string, error) {
 	for name := range cfg.Contexts {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 
 	return names, cfg.Context, nil
 }

@@ -1,3 +1,4 @@
+// Package talos wraps the siderolabs machinery gRPC client for communicating with Talos Linux nodes.
 package talos
 
 import (
@@ -43,8 +44,8 @@ func Connect(ctx context.Context, talosconfig string, contextName string) (*Clie
 	}
 
 	var endpoints []string
-	if ctx, ok := cfg.Contexts[effectiveContext]; ok {
-		endpoints = ctx.Endpoints
+	if ctxCfg, ok := cfg.Contexts[effectiveContext]; ok {
+		endpoints = ctxCfg.Endpoints
 	}
 
 	return &Client{
