@@ -5,6 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/larkly/lazytalos/internal/app"
+	"github.com/larkly/lazytalos/internal/shared"
 )
 
 var version = "dev"
@@ -47,13 +53,39 @@ func main() {
 		talosconfig = filepath.Join(home, ".talos", "config")
 	}
 
-	_ = contextFlag
-	_ = refresh
-	_ = plain
-	_ = debug
-	_ = talosconfig
-	_ = pickContext
+	if debug {
+		if err := shared.EnableDebug(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not enable debug logging: %v\n", err)
+		}
+	}
 
-	// TODO: initialize app
-	fmt.Println("lazytalos", version)
+	m := app.New(app.Options{
+		Talosconfig:     talosconfig,
+		Context:         contextFlag,
+		RefreshInterval: time.Duration(refresh) * time.Second,
+		PickContext:     pickContext,
+		Version:         version,
+		Plain:           plain,
+	})
+
+	p := tea.NewProgram(m)
+	finalModel, err := p.Run()
+	shared.CloseDebug()
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if fm, ok := finalModel.(app.Model); ok && fm.ShouldRestart() {
+		exe, err := os.Executable()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cannot find executable for restart: %v\n", err)
+			os.Exit(1)
+		}
+		if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+			fmt.Fprintf(os.Stderr, "restart failed: %v\n", err)
+			os.Exit(1)
+		}
+	}
 }
