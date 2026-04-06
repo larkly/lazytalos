@@ -43,7 +43,8 @@ type KeyMap struct {
 
 	// Confirmation
 	Confirm key.Binding // ctrl+s
-	Deny    key.Binding // Esc (same as Back — handled contextually)
+	// Deny shares the same key as Back (Esc); in modal context use Deny, in navigation context use Back to indicate intent.
+	Deny key.Binding // Esc (same as Back — handled contextually)
 }
 
 // Keys is the global key binding map.

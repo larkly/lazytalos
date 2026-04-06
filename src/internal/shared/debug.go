@@ -27,29 +27,56 @@ func EnableDebug() error {
 		return err
 	}
 	path := filepath.Join(dir, "debug.log")
+	fmt.Fprintf(os.Stderr, "Debug log: %s\n", path)
+	return enableDebugAt(path)
+}
+
+// enableDebugAt opens (or creates) a log file at the given path and enables debug logging.
+// It is used by EnableDebug and by tests via EnableDebugAt.
+func enableDebugAt(path string) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
 	}
+	debugMu.Lock()
+	defer debugMu.Unlock()
 	debugFile = f
 	debugLogger = log.New(f, "", 0)
 	debugEnabled = true
 	debugLogger.Printf("=== debug started at %s ===", time.Now().Format(time.RFC3339))
-	fmt.Fprintf(os.Stderr, "Debug log: %s\n", path)
 	return nil
+}
+
+// EnableDebugAt opens a debug log file at the given path. Intended for tests.
+func EnableDebugAt(path string) error {
+	return enableDebugAt(path)
 }
 
 // DebugEnabled returns true if debug logging is active.
 func DebugEnabled() bool {
+	debugMu.Lock()
+	defer debugMu.Unlock()
 	return debugEnabled
+}
+
+// CloseDebug flushes and closes the debug log file and disables further logging.
+func CloseDebug() {
+	debugMu.Lock()
+	defer debugMu.Unlock()
+	if debugFile != nil {
+		_ = debugFile.Close()
+		debugFile = nil
+	}
+	debugLogger = nil
+	debugEnabled = false
 }
 
 // Debugf writes a timestamped message to the debug log.
 func Debugf(format string, args ...any) {
+	debugMu.Lock()
+	defer debugMu.Unlock()
 	if debugLogger == nil {
 		return
 	}
-	debugMu.Lock()
-	defer debugMu.Unlock()
 	debugLogger.Printf("%s %s", time.Now().Format("15:04:05.000"), fmt.Sprintf(format, args...))
 }

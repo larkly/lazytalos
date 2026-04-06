@@ -7,6 +7,9 @@ import (
 	"github.com/larkly/lazytalos/internal/shared"
 )
 
+// errorButtonStyle is the button style for the error modal OK button.
+var errorButtonStyle = shared.StyleButtonSubmit
+
 // ErrorDismissedMsg is sent when the error modal is dismissed.
 type ErrorDismissedMsg struct{}
 
@@ -48,22 +51,13 @@ func (m ErrorModel) Update(msg tea.Msg) (ErrorModel, tea.Cmd) {
 
 // View renders the error modal.
 func (m ErrorModel) View() string {
-	title := lipgloss.NewStyle().
-		Bold(true).
+	title := shared.StyleModalTitle.
 		Foreground(shared.ColorError).
-		MarginBottom(1).
 		Render("Error: " + m.Context)
 
-	body := lipgloss.NewStyle().
-		Foreground(shared.ColorFg).
-		Render(m.Err)
+	body := shared.StyleValue.Render(m.Err)
 
-	btnStyle := lipgloss.NewStyle().
-		Padding(0, 3).
-		Background(shared.ColorPrimary).
-		Foreground(shared.ColorBg).
-		Bold(true)
-	button := btnStyle.Render("[enter] OK")
+	button := errorButtonStyle.Render("[enter] OK")
 
 	content := title + "\n\n" + body + "\n\n" + button
 	box := shared.StyleErrorModal.Width(60).Render(content)
