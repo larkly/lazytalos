@@ -24,6 +24,9 @@ type Container struct {
 // ListContainers fetches all containers across all nodes in the client's context.
 // It uses the CRI namespace ("k8s.io") and the CONTAINERD driver.
 func ListContainers(ctx context.Context, c *talos.Client) ([]Container, error) {
+	if c == nil || c.C == nil {
+		return nil, nil
+	}
 	resp, err := c.C.Containers(ctx, "k8s.io", common.ContainerDriver_CRI)
 	if err != nil {
 		return nil, err
