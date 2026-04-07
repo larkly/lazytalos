@@ -7,10 +7,14 @@ import (
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/larkly/lazytalos/internal/shared"
+	"github.com/larkly/lazytalos/internal/ui/containers"
 	"github.com/larkly/lazytalos/internal/ui/dashboard"
+	"github.com/larkly/lazytalos/internal/ui/etcdview"
 	"github.com/larkly/lazytalos/internal/ui/logviewer"
+	"github.com/larkly/lazytalos/internal/ui/networkview"
 	"github.com/larkly/lazytalos/internal/ui/nodelist"
 	"github.com/larkly/lazytalos/internal/ui/servicelist"
+	"github.com/larkly/lazytalos/internal/ui/storageview"
 )
 
 // TabDef describes a resource tab.
@@ -26,12 +30,17 @@ func defaultTabs() []TabDef {
 		{Name: "Nodes", Key: "nodes"},
 		{Name: "Services", Key: "services"},
 		{Name: "Logs", Key: "logs"},
+		{Name: "Containers", Key: "containers"},
+		{Name: "Network", Key: "network"},
+		{Name: "Storage", Key: "storage"},
+		{Name: "etcd", Key: "etcd"},
 	}
 }
 
 func (m Model) isTopLevelView() bool {
 	switch m.view {
-	case viewDashboard, viewNodeList, viewServiceList, viewLogViewer:
+	case viewDashboard, viewNodeList, viewServiceList, viewLogViewer,
+		viewContainers, viewNetwork, viewStorage, viewEtcd:
 		return true
 	}
 	return false
@@ -99,6 +108,58 @@ func (m Model) switchTab(idx int) (Model, tea.Cmd) {
 		}
 		m.statusBar.Hint = m.logViewer.Hints()
 		return m, m.logViewer.ForceRefresh()
+
+	case "containers":
+		m.view = viewContainers
+		m.statusBar.CurrentView = "containers"
+		if !m.tabInited[idx] {
+			m.containers = containers.New(m.client, m.refreshInterval)
+			m.containers.SetSize(m.width, m.contentHeight())
+			m.tabInited[idx] = true
+			m.statusBar.Hint = m.containers.Hints()
+			return m, m.containers.Init()
+		}
+		m.statusBar.Hint = m.containers.Hints()
+		return m, m.containers.ForceRefresh()
+
+	case "network":
+		m.view = viewNetwork
+		m.statusBar.CurrentView = "network"
+		if !m.tabInited[idx] {
+			m.network = networkview.New(m.client, m.refreshInterval)
+			m.network.SetSize(m.width, m.contentHeight())
+			m.tabInited[idx] = true
+			m.statusBar.Hint = m.network.Hints()
+			return m, m.network.Init()
+		}
+		m.statusBar.Hint = m.network.Hints()
+		return m, m.network.ForceRefresh()
+
+	case "storage":
+		m.view = viewStorage
+		m.statusBar.CurrentView = "storage"
+		if !m.tabInited[idx] {
+			m.storage = storageview.New(m.client, m.refreshInterval)
+			m.storage.SetSize(m.width, m.contentHeight())
+			m.tabInited[idx] = true
+			m.statusBar.Hint = m.storage.Hints()
+			return m, m.storage.Init()
+		}
+		m.statusBar.Hint = m.storage.Hints()
+		return m, m.storage.ForceRefresh()
+
+	case "etcd":
+		m.view = viewEtcd
+		m.statusBar.CurrentView = "etcd"
+		if !m.tabInited[idx] {
+			m.etcd = etcdview.New(m.client, m.refreshInterval)
+			m.etcd.SetSize(m.width, m.contentHeight())
+			m.tabInited[idx] = true
+			m.statusBar.Hint = m.etcd.Hints()
+			return m, m.etcd.Init()
+		}
+		m.statusBar.Hint = m.etcd.Hints()
+		return m, m.etcd.ForceRefresh()
 	}
 	return m, nil
 }

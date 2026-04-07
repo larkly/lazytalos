@@ -21,6 +21,10 @@ type KeyMap struct {
 	Tab2 key.Binding
 	Tab3 key.Binding
 	Tab4 key.Binding
+	Tab5 key.Binding
+	Tab6 key.Binding
+	Tab7 key.Binding
+	Tab8 key.Binding
 
 	// Selection
 	Select    key.Binding // Space
@@ -37,9 +41,15 @@ type KeyMap struct {
 	GroupToggle   key.Binding // g (services tab)
 
 	// Write actions (Ctrl-prefixed)
-	Reboot         key.Binding // ctrl+o
-	Shutdown       key.Binding // ctrl+d
-	ServiceRestart key.Binding // ctrl+k
+	Reboot           key.Binding // ctrl+o
+	Shutdown         key.Binding // ctrl+d
+	ServiceRestart   key.Binding // ctrl+k
+	ConfigEdit       key.Binding // ctrl+e
+	EtcdRemoveMember key.Binding // ctrl+m
+	ContainerLogs    key.Binding // ctrl+l
+
+	// View-specific
+	NamespaceToggle key.Binding // n (containers tab)
 
 	// Confirmation
 	Confirm key.Binding // ctrl+s
@@ -105,6 +115,22 @@ var Keys = KeyMap{
 		key.WithKeys("4"),
 		key.WithHelp("4", "tab 4"),
 	),
+	Tab5: key.NewBinding(
+		key.WithKeys("5"),
+		key.WithHelp("5", "tab 5"),
+	),
+	Tab6: key.NewBinding(
+		key.WithKeys("6"),
+		key.WithHelp("6", "tab 6"),
+	),
+	Tab7: key.NewBinding(
+		key.WithKeys("7"),
+		key.WithHelp("7", "tab 7"),
+	),
+	Tab8: key.NewBinding(
+		key.WithKeys("8"),
+		key.WithHelp("8", "tab 8"),
+	),
 	Select: key.NewBinding(
 		key.WithKeys("space"),
 		key.WithHelp("space", "select"),
@@ -156,6 +182,22 @@ var Keys = KeyMap{
 	ServiceRestart: key.NewBinding(
 		key.WithKeys("ctrl+k"),
 		key.WithHelp("ctrl+k", "restart service"),
+	),
+	ConfigEdit: key.NewBinding(
+		key.WithKeys("ctrl+e"),
+		key.WithHelp("ctrl+e", "edit config"),
+	),
+	EtcdRemoveMember: key.NewBinding(
+		key.WithKeys("ctrl+m"),
+		key.WithHelp("ctrl+m", "remove member"),
+	),
+	ContainerLogs: key.NewBinding(
+		key.WithKeys("ctrl+l"),
+		key.WithHelp("ctrl+l", "container logs"),
+	),
+	NamespaceToggle: key.NewBinding(
+		key.WithKeys("n"),
+		key.WithHelp("n", "toggle namespace"),
 	),
 	Confirm: key.NewBinding(
 		key.WithKeys("ctrl+s"),

@@ -33,6 +33,21 @@ func (m Model) updateActiveView(msg tea.Msg) (Model, tea.Cmd) {
 	case viewLogViewer:
 		m.logViewer, cmd = m.logViewer.Update(msg)
 		m.statusBar.Hint = m.logViewer.Hints()
+	case viewContainers:
+		m.containers, cmd = m.containers.Update(msg)
+		m.statusBar.Hint = m.containers.Hints()
+	case viewNetwork:
+		m.network, cmd = m.network.Update(msg)
+		m.statusBar.Hint = m.network.Hints()
+	case viewStorage:
+		m.storage, cmd = m.storage.Update(msg)
+		m.statusBar.Hint = m.storage.Hints()
+	case viewEtcd:
+		m.etcd, cmd = m.etcd.Update(msg)
+		m.statusBar.Hint = m.etcd.Hints()
+	case viewConfigEditor:
+		m.configEditor, cmd = m.configEditor.Update(msg)
+		m.statusBar.Hint = m.configEditor.Hints()
 	}
 	return m, cmd
 }
@@ -67,6 +82,22 @@ func (m Model) updateAllViews(msg tea.Msg) (Model, tea.Cmd) {
 		m.logViewer, cmd = m.logViewer.Update(msg)
 		cmds = append(cmds, cmd)
 	}
+	if m.tabInited[4] {
+		m.containers, cmd = m.containers.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	if m.tabInited[5] {
+		m.network, cmd = m.network.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	if m.tabInited[6] {
+		m.storage, cmd = m.storage.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	if m.tabInited[7] {
+		m.etcd, cmd = m.etcd.Update(msg)
+		cmds = append(cmds, cmd)
+	}
 	return m, tea.Batch(cmds...)
 }
 
@@ -77,6 +108,8 @@ func (m Model) updateModal(msg tea.Msg) (Model, tea.Cmd) {
 		m.confirm, cmd = m.confirm.Update(msg)
 	case modalError:
 		m.errModal, cmd = m.errModal.Update(msg)
+	case modalTypedConfirm:
+		m.typedConfirm, cmd = m.typedConfirm.Update(msg)
 	}
 	return m, cmd
 }

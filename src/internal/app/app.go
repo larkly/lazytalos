@@ -1,19 +1,25 @@
 package app
 
 import (
+	"fmt"
 	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbletea/v2"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
+	"github.com/larkly/lazytalos/internal/ui/configeditor"
+	"github.com/larkly/lazytalos/internal/ui/containers"
 	"github.com/larkly/lazytalos/internal/ui/contextpicker"
 	"github.com/larkly/lazytalos/internal/ui/dashboard"
+	"github.com/larkly/lazytalos/internal/ui/etcdview"
 	"github.com/larkly/lazytalos/internal/ui/logviewer"
 	"github.com/larkly/lazytalos/internal/ui/modal"
+	"github.com/larkly/lazytalos/internal/ui/networkview"
 	"github.com/larkly/lazytalos/internal/ui/nodelist"
 	"github.com/larkly/lazytalos/internal/ui/servicelist"
 	"github.com/larkly/lazytalos/internal/ui/statusbar"
+	"github.com/larkly/lazytalos/internal/ui/storageview"
 )
 
 type activeView int
@@ -24,6 +30,11 @@ const (
 	viewNodeList
 	viewServiceList
 	viewLogViewer
+	viewContainers
+	viewNetwork
+	viewStorage
+	viewEtcd
+	viewConfigEditor
 )
 
 type modalType int
@@ -32,6 +43,7 @@ const (
 	modalNone modalType = iota
 	modalConfirm
 	modalError
+	modalTypedConfirm
 )
 
 // Model is the root application model.
@@ -49,18 +61,25 @@ type Model struct {
 	tabInited []bool
 
 	// Views
-	dashboard   dashboard.Model
-	nodeList    nodelist.Model
-	serviceList servicelist.Model
-	logViewer   logviewer.Model
+	dashboard    dashboard.Model
+	nodeList     nodelist.Model
+	serviceList  servicelist.Model
+	logViewer    logviewer.Model
+	containers   containers.Model
+	network      networkview.Model
+	storage      storageview.Model
+	etcd         etcdview.Model
+	configEditor configeditor.Model
+	previousView activeView // for returning from config editor
 
 	// Selection (for bulk node ops)
 	selectedNodes map[string]bool
 
 	// Modals
-	activeModal modalType
-	confirm     modal.ConfirmModel
-	errModal    modal.ErrorModel
+	activeModal  modalType
+	confirm      modal.ConfirmModel
+	errModal     modal.ErrorModel
+	typedConfirm modal.TypedConfirmModel
 
 	// UI
 	statusBar statusbar.Model
@@ -163,6 +182,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.contextPicker.SetSize(m.width, m.height)
 		m.confirm.SetSize(m.width, m.height)
 		m.errModal.SetSize(m.width, m.height)
+		m.typedConfirm.SetSize(m.width, m.height)
 		m.statusBar.Width = m.width
 		return m.updateActiveView(msg)
 
@@ -181,7 +201,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Tab switching (only from top-level views)
 		if m.isTopLevelView() {
-			if s := msg.String(); len(s) == 1 && s[0] >= '1' && s[0] <= '4' {
+			if s := msg.String(); len(s) == 1 && s[0] >= '1' && s[0] <= '8' {
 				idx := int(s[0] - '1')
 				if idx < len(m.tabs) {
 					return m.switchTab(idx)
@@ -243,6 +263,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.handleConfirmedAction(msg)
 
+	case modal.TypedConfirmAction:
+		m.activeModal = modalNone
+		if !msg.Confirm {
+			return m, nil
+		}
+		return m.handleTypedConfirmAction(msg)
+
 	case shared.NodeActionMsg:
 		shared.Debugf("[app] action completed: %s on %v", msg.Action, msg.Nodes)
 		m.statusBar.Hint = msg.Action + " completed"
@@ -292,8 +319,62 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activeModal = modalConfirm
 		return m, nil
 
+	case shared.EtcdMemberRemoveRequestMsg:
+		shared.Debugf("[app] etcd member remove request: %s", msg.MemberHex)
+		m.typedConfirm = modal.NewTypedConfirm(
+			"remove etcd member",
+			"Remove etcd Member",
+			fmt.Sprintf("This will permanently remove etcd member %q.\nThis operation cannot be undone.", msg.MemberHex),
+			msg.MemberHex,
+			msg.MemberID,
+		)
+		m.typedConfirm.SetSize(m.width, m.height)
+		m.activeModal = modalTypedConfirm
+		return m, nil
+
+	case shared.EtcdMemberRemovedMsg:
+		shared.Debugf("[app] etcd member removed: %x", msg.MemberID)
+		m.statusBar.Hint = "etcd member removed"
+		return m.forceRefreshActiveView()
+
+	case shared.EtcdMemberRemoveErrMsg:
+		shared.Debugf("[app] etcd member remove error: %v", msg.Err)
+		m.errModal = modal.NewError("etcd member removal failed", msg.Err)
+		m.errModal.SetSize(m.width, m.height)
+		m.activeModal = modalError
+		return m, nil
+
+	case shared.ConfigEditRequestMsg:
+		shared.Debugf("[app] config edit request for node: %s", msg.Node)
+		m.previousView = m.view
+		m.configEditor = configeditor.New(m.client, msg.Node)
+		m.configEditor.SetSize(m.width, m.height)
+		m.view = viewConfigEditor
+		m.statusBar.CurrentView = "config editor"
+		m.statusBar.Hint = m.configEditor.Hints()
+		return m, m.configEditor.Init()
+
+	case shared.ConfigAppliedMsg:
+		shared.Debugf("[app] config applied on node: %s", msg.Node)
+		m.statusBar.Hint = fmt.Sprintf("Config applied on %s", msg.Node)
+		// Return to previous view
+		m.view = m.previousView
+		return m.forceRefreshActiveView()
+
+	case shared.ConfigApplyErrMsg:
+		shared.Debugf("[app] config apply error on %s: %v", msg.Node, msg.Err)
+		m.errModal = modal.NewError("Config apply failed", msg.Err)
+		m.errModal.SetSize(m.width, m.height)
+		m.activeModal = modalError
+		return m, nil
+
 	case shared.ViewChangeMsg:
-		// Child view wants to exit (ignored at top level -- no parent to go back to)
+		// Child view wants to exit
+		if m.view == viewConfigEditor {
+			m.view = m.previousView
+			return m.forceRefreshActiveView()
+		}
+		// ignored at top level for tab views
 		return m, nil
 
 	case shared.LogLineMsg, shared.LogStreamEndedMsg:
@@ -335,6 +416,16 @@ func (m Model) handleConfirmedAction(action modal.ConfirmAction) (Model, tea.Cmd
 	return m, nil
 }
 
+func (m Model) handleTypedConfirmAction(action modal.TypedConfirmAction) (Model, tea.Cmd) {
+	switch action.Action {
+	case "remove etcd member":
+		if memberID, ok := action.ActionData.(uint64); ok {
+			return m, m.removeEtcdMember(memberID)
+		}
+	}
+	return m, nil
+}
+
 func (m Model) forceRefreshActiveView() (Model, tea.Cmd) {
 	shared.Debugf("[app] forceRefreshActiveView: view=%d", m.view)
 	switch m.view {
@@ -346,6 +437,16 @@ func (m Model) forceRefreshActiveView() (Model, tea.Cmd) {
 		return m, m.serviceList.ForceRefresh()
 	case viewLogViewer:
 		return m, m.logViewer.ForceRefresh()
+	case viewContainers:
+		return m, m.containers.ForceRefresh()
+	case viewNetwork:
+		return m, m.network.ForceRefresh()
+	case viewStorage:
+		return m, m.storage.ForceRefresh()
+	case viewEtcd:
+		return m, m.etcd.ForceRefresh()
+	case viewConfigEditor:
+		return m, m.configEditor.ForceRefresh()
 	}
 	return m, nil
 }

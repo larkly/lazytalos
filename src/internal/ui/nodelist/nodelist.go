@@ -190,8 +190,16 @@ func (m Model) updateFilter(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) updateDetail(msg tea.KeyMsg) (Model, tea.Cmd) {
-	if key.Matches(msg, shared.Keys.Back) {
+	switch {
+	case key.Matches(msg, shared.Keys.Back):
 		m.detailView = false
+	case key.Matches(msg, shared.Keys.ConfigEdit):
+		if m.cursor < len(m.filtered) {
+			node := m.filtered[m.cursor]
+			return m, func() tea.Msg {
+				return shared.ConfigEditRequestMsg{Node: node.Hostname}
+			}
+		}
 	}
 	return m, nil
 }

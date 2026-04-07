@@ -74,6 +74,24 @@ func (m Model) restartService(node, serviceID string) tea.Cmd {
 	}
 }
 
+func (m Model) removeEtcdMember(memberID uint64) tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		err := client.C.EtcdRemoveMemberByID(ctx, &machine.EtcdRemoveMemberByIDRequest{
+			MemberId: memberID,
+		})
+		if err != nil {
+			return shared.EtcdMemberRemoveErrMsg{
+				Err: fmt.Errorf("remove etcd member %x: %w", memberID, err),
+			}
+		}
+		return shared.EtcdMemberRemovedMsg{MemberID: memberID}
+	}
+}
+
 // nodeContext returns a context targeting a specific Talos node.
 func nodeContext(ctx context.Context, node string) context.Context {
 	return talosclient.WithNodes(ctx, node)

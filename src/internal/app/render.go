@@ -17,6 +17,9 @@ func (m Model) View() tea.View {
 
 func (m Model) viewContent() string {
 	// Modal overlay priority chain
+	if m.activeModal == modalTypedConfirm {
+		return m.typedConfirm.View()
+	}
 	if m.activeModal == modalConfirm {
 		return m.confirm.View()
 	}
@@ -40,6 +43,17 @@ func (m Model) viewContent() string {
 		content = m.serviceList.View()
 	case viewLogViewer:
 		content = m.logViewer.View()
+	case viewContainers:
+		content = m.containers.View()
+	case viewNetwork:
+		content = m.network.View()
+	case viewStorage:
+		content = m.storage.View()
+	case viewEtcd:
+		content = m.etcd.View()
+	case viewConfigEditor:
+		// Config editor is full-screen, no tab bar
+		return m.configEditor.View()
 	}
 
 	// Add tab bar for top-level views

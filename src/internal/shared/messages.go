@@ -65,3 +65,43 @@ type ServiceRestartRequestMsg struct {
 
 // ViewChangeMsg is sent by a child view when it wants to exit (e.g., Esc from nodes tab).
 type ViewChangeMsg struct{}
+
+// EtcdMemberRemoveRequestMsg is sent by the etcd tab to request member removal
+// via a typed-confirmation modal.
+type EtcdMemberRemoveRequestMsg struct {
+	MemberID  uint64
+	MemberHex string
+}
+
+// EtcdMemberRemovedMsg is sent after successful etcd member removal.
+type EtcdMemberRemovedMsg struct {
+	MemberID uint64
+}
+
+// EtcdMemberRemoveErrMsg is sent when etcd member removal fails.
+type EtcdMemberRemoveErrMsg struct {
+	Err error
+}
+
+// ConfigEditRequestMsg is sent to open the config editor for a specific node.
+type ConfigEditRequestMsg struct {
+	Node string
+}
+
+// ConfigApplyRequestMsg is sent when the user applies an edited config.
+type ConfigApplyRequestMsg struct {
+	Node string
+	Data []byte
+	Mode int // 0=no-reboot, 1=reboot, 2=staged
+}
+
+// ConfigAppliedMsg is sent after successful config apply.
+type ConfigAppliedMsg struct {
+	Node string
+}
+
+// ConfigApplyErrMsg is sent when config apply fails.
+type ConfigApplyErrMsg struct {
+	Node string
+	Err  error
+}

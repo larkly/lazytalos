@@ -21,11 +21,11 @@ func TestNew_DefaultOptions(t *testing.T) {
 	if m.view != viewContextPicker {
 		t.Errorf("view = %d, want %d (viewContextPicker)", m.view, viewContextPicker)
 	}
-	if len(m.tabs) != 4 {
-		t.Errorf("tabs len = %d, want 4", len(m.tabs))
+	if len(m.tabs) != 8 {
+		t.Errorf("tabs len = %d, want 8", len(m.tabs))
 	}
-	if len(m.tabInited) != 4 {
-		t.Errorf("tabInited len = %d, want 4", len(m.tabInited))
+	if len(m.tabInited) != 8 {
+		t.Errorf("tabInited len = %d, want 8", len(m.tabInited))
 	}
 }
 
