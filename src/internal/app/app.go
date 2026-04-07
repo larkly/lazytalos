@@ -259,13 +259,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m.updateActiveView(msg)
 
-	case configeditor.ClosedMsg:
-		m.editingConfig = false
-		if msg.Applied {
-			m.statusBar.Hint = "Config applied successfully"
-		}
-		return m, nil
-
 	case shared.ContextSelectedMsg:
 		shared.Debugf("[app] context selected: %s", msg.ContextName)
 		m.contextName = msg.ContextName
