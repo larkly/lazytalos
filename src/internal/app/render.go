@@ -16,6 +16,11 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) viewContent() string {
+	// Config editor overlay has highest priority.
+	if m.editingConfig {
+		return m.configEditor.View()
+	}
+
 	// Modal overlay priority chain
 	if m.activeModal == modalConfirm {
 		return m.confirm.View()
@@ -40,6 +45,14 @@ func (m Model) viewContent() string {
 		content = m.serviceList.View()
 	case viewLogViewer:
 		content = m.logViewer.View()
+	case viewContainers:
+		content = m.containers.View()
+	case viewNetwork:
+		content = m.network.View()
+	case viewStorage:
+		content = m.storage.View()
+	case viewEtcd:
+		content = m.etcdView.View()
 	}
 
 	// Add tab bar for top-level views
