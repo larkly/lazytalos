@@ -21,6 +21,11 @@ func (m Model) viewContent() string {
 		return m.configEditor.View()
 	}
 
+	// Help overlay: second highest priority.
+	if m.help.IsVisible() {
+		return m.help.View()
+	}
+
 	// Modal overlay priority chain
 	if m.activeModal == modalConfirm {
 		return m.confirm.View()

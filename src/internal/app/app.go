@@ -16,6 +16,7 @@ import (
 	"github.com/larkly/lazytalos/internal/ui/contextpicker"
 	"github.com/larkly/lazytalos/internal/ui/dashboard"
 	"github.com/larkly/lazytalos/internal/ui/etcdview"
+	"github.com/larkly/lazytalos/internal/ui/help"
 	"github.com/larkly/lazytalos/internal/ui/logviewer"
 	"github.com/larkly/lazytalos/internal/ui/modal"
 	"github.com/larkly/lazytalos/internal/ui/network"
@@ -79,6 +80,9 @@ type Model struct {
 	network     network.Model
 	storage     storage.Model
 	etcdView    etcdview.Model
+
+	// Help overlay
+	help help.Model
 
 	// Config editor overlay
 	configEditor configeditor.Model
@@ -159,6 +163,7 @@ func New(opts Options) Model {
 		pickContext:     opts.PickContext,
 		version:        opts.Version,
 		selectedNodes:  make(map[string]bool),
+		help:           help.New(),
 	}
 
 	// Auto-select if --context flag is set, or exactly one context and not forced to pick
@@ -221,6 +226,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirm.SetSize(m.width, m.height)
 		m.errModal.SetSize(m.width, m.height)
 		m.statusBar.Width = m.width
+		m.help.SetSize(m.width, m.height)
 		return m.updateActiveView(msg)
 
 	case tea.KeyMsg:
@@ -229,11 +235,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateModal(msg)
 		}
 
+		// Help overlay intercepts all keys when visible
+		if m.help.IsVisible() {
+			var cmd tea.Cmd
+			m.help, cmd = m.help.Update(msg)
+			return m, cmd
+		}
+
 		switch {
 		case key.Matches(msg, shared.Keys.Quit) && m.view != viewContextPicker:
 			return m, tea.Quit
 		case key.Matches(msg, shared.Keys.ContextPicker) && m.view != viewContextPicker:
 			return m.switchToContextPicker()
+		case key.Matches(msg, shared.Keys.Help) && m.view != viewContextPicker:
+			m.help = m.help.Toggle()
+			return m, nil
 		}
 
 		// Tab switching (only from top-level views)
