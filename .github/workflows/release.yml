@@ -1,0 +1,155 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and release (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  VERSION: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  validate:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag exists
+        run: |
+          if ! git tag -l "${{ github.event.inputs.tag }}" | grep -q .; then
+            echo "::error::Tag '${{ github.event.inputs.tag }}' does not exist"
+            exit 1
+          fi
+
+  build:
+    needs: [validate]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERSION }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+
+      - name: Build
+        working-directory: src
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          bin="lazytalos-${{ matrix.goos }}-${{ matrix.goarch }}"
+          go build -ldflags "-s -w -X main.version=${{ env.VERSION }}" -o "../${bin}" ./cmd/lazytalos
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lazytalos-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: lazytalos-${{ matrix.goos }}-${{ matrix.goarch }}
+
+  package:
+    needs: build
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goarch: amd64
+            deb_arch: amd64
+            rpm_arch: x86_64
+          - goarch: arm64
+            deb_arch: arm64
+            rpm_arch: aarch64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERSION }}
+
+      - name: Download linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: lazytalos-linux-${{ matrix.goarch }}
+
+      - name: Prepare binary
+        run: |
+          chmod +x lazytalos-linux-${{ matrix.goarch }}
+          cp lazytalos-linux-${{ matrix.goarch }} lazytalos
+
+      - name: Install nFPM
+        run: |
+          NFPM_VERSION=$(curl -sI https://github.com/goreleaser/nfpm/releases/latest | grep -i location | sed 's|.*/v||;s/\r//')
+          curl -sL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" | sudo tar -xz -C /usr/local/bin nfpm
+
+      - name: Build deb
+        run: |
+          export VERSION="${VERSION#v}"
+          export NFPM_ARCH="${{ matrix.deb_arch }}"
+          nfpm package --packager deb --target "lazytalos_${VERSION}_${{ matrix.deb_arch }}.deb"
+
+      - name: Build rpm
+        run: |
+          export VERSION="${VERSION#v}"
+          export NFPM_ARCH="${{ matrix.rpm_arch }}"
+          nfpm package --packager rpm --target "lazytalos-${VERSION}-1.${{ matrix.rpm_arch }}.rpm"
+
+      - name: Build Arch package
+        run: |
+          export VERSION="${VERSION#v}"
+          export NFPM_ARCH="${{ matrix.rpm_arch }}"
+          nfpm package --packager archlinux --target "lazytalos-${VERSION}-1-${{ matrix.rpm_arch }}.pkg.tar.zst"
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.goarch }}
+          path: |
+            *.deb
+            *.rpm
+            *.pkg.tar.zst
+
+  release:
+    needs: [build, package]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: sha256sum lazytalos-* *.deb *.rpm *.pkg.tar.zst > SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.VERSION }}
+          generate_release_notes: true
+          files: |
+            lazytalos-*
+            *.deb
+            *.rpm
+            *.pkg.tar.zst
+            SHA256SUMS
