@@ -36,7 +36,9 @@ type ConfirmModel struct {
 	Title           string    // custom title (overrides default)
 	Width           int
 	Height          int
-	focused         int // 0 = confirm, 1 = cancel
+	focused         int    // 0 = confirm, 1 = cancel
+	RequiredInput   string // if non-empty, user must type this exact string to confirm
+	typedInput      string // current text buffer for typed confirmation
 }
 
 // NewConfirm creates a confirmation dialog for a single node.
@@ -56,6 +58,17 @@ func NewServiceRestartConfirm(node, serviceID, displayName string) ConfirmModel 
 		ServiceID: serviceID,
 		Body:      fmt.Sprintf("Are you sure you want to restart service %q on node %q?", displayName, node),
 		focused:   1, // default to cancel for safety
+	}
+}
+
+// NewTypedConfirm creates a confirmation modal that requires the user to type
+// a specific string before confirming. Used for dangerous operations.
+func NewTypedConfirm(action, node, requiredInput string) ConfirmModel {
+	return ConfirmModel{
+		Action:        action,
+		Node:          node,
+		RequiredInput: requiredInput,
+		focused:       1, // default to cancel for safety
 	}
 }
 
@@ -107,6 +120,32 @@ func (m ConfirmModel) cancelMsg() tea.Cmd {
 func (m ConfirmModel) Update(msg tea.Msg) (ConfirmModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.RequiredInput != "" {
+			// Typed-confirmation mode: intercept key input for text buffer.
+			switch {
+			case key.Matches(msg, shared.Keys.Back):
+				return m, m.cancelMsg()
+			case key.Matches(msg, shared.Keys.Confirm):
+				// Only confirm if typed text matches exactly.
+				if m.typedInput == m.RequiredInput {
+					return m, m.confirmMsg()
+				}
+				// Silently ignore if not matching.
+				return m, nil
+			default:
+				s := msg.String()
+				if s == "backspace" {
+					runes := []rune(m.typedInput)
+					if len(runes) > 0 {
+						m.typedInput = string(runes[:len(runes)-1])
+					}
+				} else if len(s) == 1 {
+					m.typedInput += s
+				}
+			}
+			return m, nil
+		}
+		// Standard (non-typed) confirmation mode.
 		switch {
 		case key.Matches(msg, shared.Keys.Confirm):
 			return m, m.confirmMsg()
@@ -157,17 +196,33 @@ func (m ConfirmModel) View() string {
 		)
 	}
 
+	// Typed-input prompt (for dangerous operations requiring explicit confirmation).
+	typedPrompt := ""
+	if m.RequiredInput != "" {
+		prompt := fmt.Sprintf("Type %q to confirm:", m.RequiredInput)
+		input := shared.StyleValue.Render(m.typedInput) + "_"
+		typedPrompt = "\n\n" + prompt + "\n> " + input
+	}
+
 	// Buttons
 	confirmStyle := shared.StyleButton
 	cancelStyle := shared.StyleButton
-	if m.focused == 0 {
+	if m.RequiredInput != "" {
+		// In typed mode: only highlight confirm if input matches.
+		if m.typedInput == m.RequiredInput {
+			confirmStyle = shared.StyleButtonSubmit
+		} else {
+			confirmStyle = shared.StyleMuted
+		}
+		cancelStyle = shared.StyleButtonCancel
+	} else if m.focused == 0 {
 		confirmStyle = shared.StyleButtonSubmit
 	} else {
 		cancelStyle = shared.StyleButtonCancel
 	}
 	buttons := confirmStyle.Render("[ctrl+s] Confirm") + "  " + cancelStyle.Render("[esc] Cancel")
 
-	content := title + "\n\n" + body + warning + "\n\n" + buttons
+	content := title + "\n\n" + body + warning + typedPrompt + "\n\n" + buttons
 	box := shared.StyleModal.Width(60).Render(content)
 
 	return lipgloss.Place(m.Width, m.Height, lipgloss.Center, lipgloss.Center, box)
