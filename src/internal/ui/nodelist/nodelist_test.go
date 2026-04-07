@@ -112,6 +112,27 @@ func TestFilter(t *testing.T) {
 	}
 }
 
+func TestCtrlXInDetailViewEmitsReset(t *testing.T) {
+	m := New(nil, 0)
+	m.nodes = makeTestNodes()
+	m.applyFilter()
+	m.detailView = true
+	m.cursor = 0
+
+	_, cmd := m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl}))
+	if cmd == nil {
+		t.Fatal("expected a command after ctrl+x in detail view")
+	}
+	msg := cmd()
+	req, ok := msg.(shared.NodeResetRequestMsg)
+	if !ok {
+		t.Fatalf("expected NodeResetRequestMsg, got %T", msg)
+	}
+	if req.Node != "cp-1" {
+		t.Errorf("expected node cp-1, got %q", req.Node)
+	}
+}
+
 func TestTickMsg_TriggersRefresh(t *testing.T) {
 	m := New(nil, 0)
 	_, cmd := m.Update(shared.TickMsg{})

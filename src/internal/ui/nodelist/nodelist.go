@@ -190,8 +190,15 @@ func (m Model) updateFilter(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) updateDetail(msg tea.KeyMsg) (Model, tea.Cmd) {
-	if key.Matches(msg, shared.Keys.Back) {
+	switch {
+	case key.Matches(msg, shared.Keys.Back):
 		m.detailView = false
+	case key.Matches(msg, shared.Keys.ResetNode):
+		if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
+			return m, func() tea.Msg {
+				return shared.NodeResetRequestMsg{Node: m.filtered[m.cursor].Hostname}
+			}
+		}
 	}
 	return m, nil
 }
@@ -371,7 +378,7 @@ func (m *Model) SetSize(w, h int) {
 // Hints returns status bar hint text.
 func (m Model) Hints() string {
 	if m.detailView {
-		return "esc:back"
+		return "esc:back  ctrl+x:reset"
 	}
 	if m.filterActive {
 		return "type to filter  enter:apply  esc:cancel"

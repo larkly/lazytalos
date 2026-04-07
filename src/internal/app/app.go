@@ -53,6 +53,7 @@ const (
 	modalNone modalType = iota
 	modalConfirm
 	modalError
+	modalReset
 )
 
 // Model is the root application model.
@@ -90,6 +91,7 @@ type Model struct {
 	activeModal modalType
 	confirm     modal.ConfirmModel
 	errModal    modal.ErrorModel
+	resetModal  modal.ResetModal
 
 	// etcd member removal state
 	etcdMemberNode string
@@ -385,6 +387,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirm = modal.NewTypedConfirm("remove etcd member", msg.Node, fmt.Sprintf("%x", msg.MemberID))
 		m.confirm.SetSize(m.width, m.height)
 		m.activeModal = modalConfirm
+		return m, nil
+
+	case shared.NodeResetRequestMsg:
+		m.resetModal = modal.NewResetModal(msg.Node, m.width, m.height)
+		m.activeModal = modalReset
+		return m, nil
+
+	case modal.ResetConfirmedMsg:
+		m.activeModal = modalNone
+		return m, m.resetNode(msg.Node, msg.Graceful)
+
+	case modal.ResetCancelledMsg:
+		m.activeModal = modalNone
 		return m, nil
 
 	case shared.LogLineMsg, shared.LogStreamEndedMsg:

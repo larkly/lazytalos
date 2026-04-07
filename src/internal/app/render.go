@@ -28,6 +28,9 @@ func (m Model) viewContent() string {
 	if m.activeModal == modalError {
 		return m.errModal.View()
 	}
+	if m.activeModal == modalReset {
+		return m.resetModal.View()
+	}
 
 	var content string
 	switch m.view {
