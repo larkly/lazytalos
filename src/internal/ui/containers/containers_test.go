@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/larkly/lazytalos/internal/node"
 	"github.com/larkly/lazytalos/internal/shared"
 )
@@ -110,28 +111,19 @@ func TestContainerLogsMsg(t *testing.T) {
 		{NodeHostname: "tnn3-demo-cp-1", Namespace: "k8s.io", Name: "kube-apiserver", Image: "kube-apiserver:v1.32.0", State: "RUNNING", PID: 1234},
 	}
 	m.applyFilter()
+	m.SetSize(120, 40)
 
-	// Simulate Ctrl+L key press
-	import_key := shared.Keys.ContainerLogs
-	_ = import_key // ensure it's referenced
-
-	// Manually invoke the ctrl+l branch logic
-	if len(m.filtered) == 0 {
-		t.Fatal("expected at least one container in filtered list")
-	}
-	c := m.filtered[m.cursor]
-	var gotMsg shared.ContainerLogsRequestMsg
-	cmd := func() interface{} {
-		return shared.ContainerLogsRequestMsg{
-			Node:        c.NodeHostname,
-			Namespace:   c.Namespace,
-			ContainerID: c.Name,
-		}
+	// Drive Ctrl+L through Update so the actual dispatch path is exercised.
+	keyMsg := tea.KeyPressMsg{Code: 'l', Mod: tea.ModCtrl}
+	m2, cmd := m.Update(keyMsg)
+	_ = m2
+	if cmd == nil {
+		t.Fatal("expected a cmd from Ctrl+L, got nil")
 	}
 	result := cmd()
 	gotMsg, ok := result.(shared.ContainerLogsRequestMsg)
 	if !ok {
-		t.Fatal("expected ContainerLogsRequestMsg")
+		t.Fatalf("expected ContainerLogsRequestMsg, got %T", result)
 	}
 	if gotMsg.Node != "tnn3-demo-cp-1" {
 		t.Errorf("expected Node=tnn3-demo-cp-1, got %s", gotMsg.Node)

@@ -219,7 +219,7 @@ func (m Model) renderDevices(maxLines int) string {
 	lines := []string{shared.StyleHeader.Render(header)}
 
 	for i, d := range m.devices {
-		if i+1 >= maxLines {
+		if i >= maxLines {
 			break
 		}
 		sizeStr := formatSize(d.Size)
