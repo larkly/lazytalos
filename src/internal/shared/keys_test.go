@@ -15,6 +15,13 @@ func TestNewKeyBindingsInitialized(t *testing.T) {
 		"EditConfig":       Keys.EditConfig,
 		"ContainerLogs":    Keys.ContainerLogs,
 		"RemoveEtcdMember": Keys.RemoveEtcdMember,
+		"UpgradeCluster":   Keys.UpgradeCluster,
+		"ResetNode":        Keys.ResetNode,
+		"PauseUpgrade":     Keys.PauseUpgrade,
+		"AbortUpgrade":     Keys.AbortUpgrade,
+		"YankIP":           Keys.YankIP,
+		"YankEndpoint":     Keys.YankEndpoint,
+		"ConfigView":       Keys.ConfigView,
 	}
 
 	for name, b := range bindings {
