@@ -16,6 +16,7 @@ import (
 	"github.com/larkly/lazytalos/internal/ui/containers"
 	"github.com/larkly/lazytalos/internal/ui/contextpicker"
 	"github.com/larkly/lazytalos/internal/ui/dashboard"
+	"github.com/larkly/lazytalos/internal/ui/configview"
 	"github.com/larkly/lazytalos/internal/ui/etcdview"
 	"github.com/larkly/lazytalos/internal/ui/help"
 	"github.com/larkly/lazytalos/internal/ui/logviewer"
@@ -84,6 +85,9 @@ type Model struct {
 
 	// Help overlay
 	help help.Model
+
+	// Config view overlay
+	configView configview.Model
 
 	// Config editor overlay
 	configEditor configeditor.Model
@@ -167,6 +171,7 @@ func New(opts Options) Model {
 		version:         opts.Version,
 		selectedNodes:   make(map[string]bool),
 		help:            help.New(),
+		configView:      configview.New(opts.Talosconfig),
 		noUpdateCheck:   opts.NoUpdateCheck,
 	}
 
@@ -253,6 +258,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.errModal.SetSize(m.width, m.height)
 		m.statusBar.Width = m.width
 		m.help.SetSize(m.width, m.height)
+		m.configView.SetSize(m.width, m.height)
 		return m.updateActiveView(msg)
 
 	case tea.KeyMsg:
@@ -268,6 +274,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		// Config view overlay intercepts all keys when visible
+		if m.configView.IsVisible() {
+			var cmd tea.Cmd
+			m.configView, cmd = m.configView.Update(msg)
+			return m, cmd
+		}
+
 		switch {
 		case key.Matches(msg, shared.Keys.Quit) && m.view != viewContextPicker:
 			return m, tea.Quit
@@ -275,6 +288,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.switchToContextPicker()
 		case key.Matches(msg, shared.Keys.Help) && m.view != viewContextPicker:
 			m.help = m.help.Toggle()
+			return m, nil
+		case key.Matches(msg, shared.Keys.ConfigView) && m.view != viewContextPicker:
+			m.configView = m.configView.Toggle()
 			return m, nil
 		}
 
@@ -316,6 +332,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.contextName = msg.ContextName
 		m.statusBar.Context = msg.ContextName
 		m.statusBar.Connected = true
+		m.configView.SetActiveContext(msg.ContextName)
 		// Switch to dashboard tab (first tab)
 		m, cmd := m.switchTab(0)
 		return m, tea.Batch(cmd, m.refreshTickCmd())
@@ -393,6 +410,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case shared.ViewChangeMsg:
 		// Child view wants to exit (ignored at top level -- no parent to go back to)
+		return m, nil
+
+	case configview.ClosedMsg:
+		// Config view was dismissed; no additional action needed.
 		return m, nil
 
 	case shared.ContainerLogsRequestMsg:

@@ -26,6 +26,11 @@ func (m Model) viewContent() string {
 		return m.help.View()
 	}
 
+	// Config view overlay: third highest priority.
+	if m.configView.IsVisible() {
+		return m.configView.View()
+	}
+
 	// Modal overlay priority chain
 	if m.activeModal == modalConfirm {
 		return m.confirm.View()
