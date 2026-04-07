@@ -21,6 +21,14 @@ type KeyMap struct {
 	Tab2 key.Binding
 	Tab3 key.Binding
 	Tab4 key.Binding
+	Tab5 key.Binding
+	Tab6 key.Binding
+	Tab7 key.Binding
+	Tab8 key.Binding
+
+	// Sub-tab navigation
+	SubTabPrev key.Binding
+	SubTabNext key.Binding
 
 	// Selection
 	Select    key.Binding // Space
@@ -37,9 +45,12 @@ type KeyMap struct {
 	GroupToggle   key.Binding // g (services tab)
 
 	// Write actions (Ctrl-prefixed)
-	Reboot         key.Binding // ctrl+o
-	Shutdown       key.Binding // ctrl+d
-	ServiceRestart key.Binding // ctrl+k
+	Reboot           key.Binding // ctrl+o
+	Shutdown         key.Binding // ctrl+d
+	ServiceRestart   key.Binding // ctrl+k
+	EditConfig       key.Binding // ctrl+e
+	ContainerLogs    key.Binding // ctrl+l
+	RemoveEtcdMember key.Binding // ctrl+m
 
 	// Confirmation
 	Confirm key.Binding // ctrl+s
@@ -105,6 +116,30 @@ var Keys = KeyMap{
 		key.WithKeys("4"),
 		key.WithHelp("4", "tab 4"),
 	),
+	Tab5: key.NewBinding(
+		key.WithKeys("5"),
+		key.WithHelp("5", "Containers"),
+	),
+	Tab6: key.NewBinding(
+		key.WithKeys("6"),
+		key.WithHelp("6", "Network"),
+	),
+	Tab7: key.NewBinding(
+		key.WithKeys("7"),
+		key.WithHelp("7", "Storage"),
+	),
+	Tab8: key.NewBinding(
+		key.WithKeys("8"),
+		key.WithHelp("8", "etcd"),
+	),
+	SubTabPrev: key.NewBinding(
+		key.WithKeys("["),
+		key.WithHelp("[", "previous sub-tab"),
+	),
+	SubTabNext: key.NewBinding(
+		key.WithKeys("]"),
+		key.WithHelp("]", "next sub-tab"),
+	),
 	Select: key.NewBinding(
 		key.WithKeys("space"),
 		key.WithHelp("space", "select"),
@@ -156,6 +191,18 @@ var Keys = KeyMap{
 	ServiceRestart: key.NewBinding(
 		key.WithKeys("ctrl+k"),
 		key.WithHelp("ctrl+k", "restart service"),
+	),
+	EditConfig: key.NewBinding(
+		key.WithKeys("ctrl+e"),
+		key.WithHelp("ctrl+e", "edit node config"),
+	),
+	ContainerLogs: key.NewBinding(
+		key.WithKeys("ctrl+l"),
+		key.WithHelp("ctrl+l", "view container logs"),
+	),
+	RemoveEtcdMember: key.NewBinding(
+		key.WithKeys("ctrl+m"),
+		key.WithHelp("ctrl+m", "remove etcd member"),
 	),
 	Confirm: key.NewBinding(
 		key.WithKeys("ctrl+s"),

@@ -33,6 +33,18 @@ func (m Model) updateActiveView(msg tea.Msg) (Model, tea.Cmd) {
 	case viewLogViewer:
 		m.logViewer, cmd = m.logViewer.Update(msg)
 		m.statusBar.Hint = m.logViewer.Hints()
+	case viewContainers:
+		m.containers, cmd = m.containers.Update(msg)
+		m.statusBar.Hint = m.containers.Hints()
+	case viewNetwork:
+		m.network, cmd = m.network.Update(msg)
+		m.statusBar.Hint = m.network.Hints()
+	case viewStorage:
+		m.storage, cmd = m.storage.Update(msg)
+		m.statusBar.Hint = m.storage.Hints()
+	case viewEtcd:
+		m.etcdView, cmd = m.etcdView.Update(msg)
+		m.statusBar.Hint = m.etcdView.Hints()
 	}
 	return m, cmd
 }
@@ -65,6 +77,22 @@ func (m Model) updateAllViews(msg tea.Msg) (Model, tea.Cmd) {
 		// Still route TickMsg to it so it can handle window-resize and other
 		// non-tick messages dispatched via updateAllViews.
 		m.logViewer, cmd = m.logViewer.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	if m.tabInited[4] {
+		m.containers, cmd = m.containers.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	if m.tabInited[5] {
+		m.network, cmd = m.network.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	if m.tabInited[6] {
+		m.storage, cmd = m.storage.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	if m.tabInited[7] {
+		m.etcdView, cmd = m.etcdView.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 	return m, tea.Batch(cmds...)

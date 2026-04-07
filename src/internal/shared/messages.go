@@ -65,3 +65,24 @@ type ServiceRestartRequestMsg struct {
 
 // ViewChangeMsg is sent by a child view when it wants to exit (e.g., Esc from nodes tab).
 type ViewChangeMsg struct{}
+
+// ContainerLogsRequestMsg is emitted by the Containers tab when the user
+// wants to view logs for a specific container (Ctrl+L).
+type ContainerLogsRequestMsg struct {
+	Node        string
+	Namespace   string
+	ContainerID string
+}
+
+// ConfigEditRequestMsg is emitted by the node detail view when the user
+// wants to open the inline config editor (Ctrl+E).
+type ConfigEditRequestMsg struct {
+	Node string
+}
+
+// EtcdMemberRemoveRequestMsg is emitted by the etcd tab when the user
+// initiates member removal (Ctrl+M).
+type EtcdMemberRemoveRequestMsg struct {
+	Node     string // CP node to target for the removal RPC
+	MemberID uint64
+}

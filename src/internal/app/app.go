@@ -1,19 +1,28 @@
 package app
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbletea/v2"
+	"github.com/larkly/lazytalos/internal/config"
+	"github.com/larkly/lazytalos/internal/etcd"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
+	"github.com/larkly/lazytalos/internal/ui/configeditor"
+	"github.com/larkly/lazytalos/internal/ui/containers"
 	"github.com/larkly/lazytalos/internal/ui/contextpicker"
 	"github.com/larkly/lazytalos/internal/ui/dashboard"
+	"github.com/larkly/lazytalos/internal/ui/etcdview"
 	"github.com/larkly/lazytalos/internal/ui/logviewer"
 	"github.com/larkly/lazytalos/internal/ui/modal"
+	"github.com/larkly/lazytalos/internal/ui/network"
 	"github.com/larkly/lazytalos/internal/ui/nodelist"
 	"github.com/larkly/lazytalos/internal/ui/servicelist"
 	"github.com/larkly/lazytalos/internal/ui/statusbar"
+	"github.com/larkly/lazytalos/internal/ui/storage"
 )
 
 type activeView int
@@ -24,7 +33,19 @@ const (
 	viewNodeList
 	viewServiceList
 	viewLogViewer
+	viewContainers
+	viewNetwork
+	viewStorage
+	viewEtcd
 )
+
+// configFetchedMsg is an internal message carrying freshly-fetched config YAML.
+type configFetchedMsg struct {
+	node   string
+	yaml   string
+	width  int
+	height int
+}
 
 type modalType int
 
@@ -53,6 +74,14 @@ type Model struct {
 	nodeList    nodelist.Model
 	serviceList servicelist.Model
 	logViewer   logviewer.Model
+	containers  containers.Model
+	network     network.Model
+	storage     storage.Model
+	etcdView    etcdview.Model
+
+	// Config editor overlay
+	configEditor configeditor.Model
+	editingConfig bool
 
 	// Selection (for bulk node ops)
 	selectedNodes map[string]bool
@@ -61,6 +90,10 @@ type Model struct {
 	activeModal modalType
 	confirm     modal.ConfirmModel
 	errModal    modal.ErrorModel
+
+	// etcd member removal state
+	etcdMemberNode string
+	etcdMemberID   uint64
 
 	// UI
 	statusBar statusbar.Model
@@ -156,6 +189,28 @@ func (m Model) Init() tea.Cmd {
 
 // Update handles all messages.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Config editor overlay: route all messages to it while active.
+	if m.editingConfig {
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			m.width = msg.Width
+			m.height = msg.Height
+			m.statusBar.Width = m.width
+			m.configEditor.SetSize(m.width, m.contentHeight())
+			return m, nil
+		case configeditor.ClosedMsg:
+			m.editingConfig = false
+			if msg.Applied {
+				m.statusBar.Hint = "Config applied successfully"
+			}
+			return m, nil
+		default:
+			var ceCmd tea.Cmd
+			m.configEditor, ceCmd = m.configEditor.Update(msg)
+			return m, ceCmd
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -181,7 +236,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Tab switching (only from top-level views)
 		if m.isTopLevelView() {
-			if s := msg.String(); len(s) == 1 && s[0] >= '1' && s[0] <= '4' {
+			if s := msg.String(); len(s) == 1 && s[0] >= '1' && s[0] <= '8' {
 				idx := int(s[0] - '1')
 				if idx < len(m.tabs) {
 					return m.switchTab(idx)
@@ -296,6 +351,42 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Child view wants to exit (ignored at top level -- no parent to go back to)
 		return m, nil
 
+	case shared.ContainerLogsRequestMsg:
+		// Switch to the Logs tab.
+		m2, cmd := m.switchTab(3)
+		m2.logViewer.PreSelectContainer(msg.Node, msg.ContainerID)
+		return m2, cmd
+
+	case shared.ConfigEditRequestMsg:
+		// Fetch config async, then open the editor.
+		shared.Debugf("[app] config edit request for node %s", msg.Node)
+		node := msg.Node
+		client := m.client
+		w, h := m.width, m.contentHeight()
+		return m, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			cfg, err := config.FetchConfig(ctx, client, node)
+			if err != nil {
+				return shared.NodeActionErrMsg{Action: "edit config", Err: err}
+			}
+			return configFetchedMsg{node: node, yaml: cfg.YAML, width: w, height: h}
+		}
+
+	case configFetchedMsg:
+		m.configEditor = configeditor.New(m.client, msg.node, msg.yaml, msg.width, msg.height)
+		m.editingConfig = true
+		return m, nil
+
+	case shared.EtcdMemberRemoveRequestMsg:
+		shared.Debugf("[app] etcd member remove request: node=%s memberID=%x", msg.Node, msg.MemberID)
+		m.etcdMemberNode = msg.Node
+		m.etcdMemberID = msg.MemberID
+		m.confirm = modal.NewTypedConfirm("remove etcd member", msg.Node, fmt.Sprintf("%x", msg.MemberID))
+		m.confirm.SetSize(m.width, m.height)
+		m.activeModal = modalConfirm
+		return m, nil
+
 	case shared.LogLineMsg, shared.LogStreamEndedMsg:
 		// Always route log messages to the logviewer, even if it's not active.
 		if m.tabInited[3] {
@@ -331,6 +422,19 @@ func (m Model) handleConfirmedAction(action modal.ConfirmAction) (Model, tea.Cmd
 		if action.Node != "" && action.ServiceID != "" {
 			return m, m.restartService(action.Node, action.ServiceID)
 		}
+	case "remove etcd member":
+		node := m.etcdMemberNode
+		memberID := m.etcdMemberID
+		client := m.client
+		return m, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			err := etcd.RemoveMemberByID(ctx, client, node, memberID)
+			if err != nil {
+				return shared.NodeActionErrMsg{Action: "remove etcd member", Err: err}
+			}
+			return shared.NodeActionMsg{Action: "remove etcd member", Nodes: []string{node}}
+		}
 	}
 	return m, nil
 }
@@ -346,6 +450,14 @@ func (m Model) forceRefreshActiveView() (Model, tea.Cmd) {
 		return m, m.serviceList.ForceRefresh()
 	case viewLogViewer:
 		return m, m.logViewer.ForceRefresh()
+	case viewContainers:
+		return m, m.containers.ForceRefresh()
+	case viewNetwork:
+		return m, m.network.ForceRefresh()
+	case viewStorage:
+		return m, m.storage.ForceRefresh()
+	case viewEtcd:
+		return m, m.etcdView.ForceRefresh()
 	}
 	return m, nil
 }

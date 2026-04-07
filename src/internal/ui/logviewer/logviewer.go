@@ -96,6 +96,13 @@ func (m *Model) SetNodes(nodes []string) {
 	m.nodes = nodes
 }
 
+// PreSelectContainer is a stub that will pre-select the given node and container
+// when the log viewer is next shown. Currently a no-op pending full implementation.
+func (m *Model) PreSelectContainer(node, containerID string) {
+	// TODO: implement pre-selection of node and container/service when navigating
+	// from the Containers tab via ContainerLogsRequestMsg.
+}
+
 // Init returns the initial command.
 func (m Model) Init() tea.Cmd {
 	return nil
