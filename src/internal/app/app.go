@@ -11,6 +11,7 @@ import (
 	"github.com/larkly/lazytalos/internal/etcd"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
+	"github.com/larkly/lazytalos/internal/update"
 	"github.com/larkly/lazytalos/internal/ui/configeditor"
 	"github.com/larkly/lazytalos/internal/ui/containers"
 	"github.com/larkly/lazytalos/internal/ui/contextpicker"
@@ -113,6 +114,7 @@ type Model struct {
 	refreshInterval time.Duration
 	talosconfig     string
 	pickContext     bool // always show picker
+	noUpdateCheck   bool
 
 	// State
 	restart    bool
@@ -125,9 +127,10 @@ type Options struct {
 	Talosconfig     string
 	Context         string
 	RefreshInterval time.Duration
-	PickContext     bool
-	Version        string
-	Plain          bool
+	PickContext      bool
+	Version         string
+	Plain           bool
+	NoUpdateCheck   bool
 }
 
 // ShouldRestart returns true if the app quit due to a restart request.
@@ -161,9 +164,10 @@ func New(opts Options) Model {
 		refreshInterval: refresh,
 		talosconfig:     opts.Talosconfig,
 		pickContext:     opts.PickContext,
-		version:        opts.Version,
-		selectedNodes:  make(map[string]bool),
-		help:           help.New(),
+		version:         opts.Version,
+		selectedNodes:   make(map[string]bool),
+		help:            help.New(),
+		noUpdateCheck:   opts.NoUpdateCheck,
 	}
 
 	// Auto-select if --context flag is set, or exactly one context and not forced to pick
@@ -185,13 +189,35 @@ func New(opts Options) Model {
 
 // Init returns the initial command.
 func (m Model) Init() tea.Cmd {
+	var cmds []tea.Cmd
+
 	if m.autoSelect != "" {
 		name := m.autoSelect
-		return func() tea.Msg {
+		cmds = append(cmds, func() tea.Msg {
 			return shared.ContextSelectedMsg{ContextName: name}
-		}
+		})
 	}
-	return nil
+
+	if !m.noUpdateCheck {
+		ver := m.version
+		cmds = append(cmds, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			rel, _ := update.CheckLatest(ctx)
+			if rel == nil {
+				return nil
+			}
+			if update.IsNewer(rel.Version, ver) {
+				return shared.UpdateAvailableMsg{Version: rel.Version, URL: rel.URL}
+			}
+			return nil
+		})
+	}
+
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update handles all messages.
@@ -425,6 +451,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logViewer, cmd = m.logViewer.Update(msg)
 			return m, cmd
 		}
+		return m, nil
+
+	case shared.UpdateAvailableMsg:
+		shared.Debugf("[app] update available: %s (%s)", msg.Version, msg.URL)
+		m.statusBar.Hint = "Update available: " + msg.Version + " — " + msg.URL
 		return m, nil
 
 	case shared.TickMsg:
