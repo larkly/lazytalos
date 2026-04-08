@@ -8,14 +8,14 @@ import (
 	"github.com/larkly/lazytalos/internal/shared"
 )
 
-func TestRenderNodeTable_Empty(t *testing.T) {
-	result := RenderNodeTable(nil, nil, nil, 80, 10)
+func TestRenderNodeHealth_Empty(t *testing.T) {
+	result := RenderNodeHealth(nil, nil, nil, 10, 12)
 	if !strings.Contains(result, "No nodes found") {
 		t.Errorf("expected 'No nodes found', got %q", result)
 	}
 }
 
-func TestRenderNodeTable_WithNodes(t *testing.T) {
+func TestRenderNodeHealth_WithNodes(t *testing.T) {
 	nodes := []cluster.NodeInfo{
 		{Hostname: "cp-1", MachineType: "controlplane"},
 		{Hostname: "worker-1", MachineType: "worker"},
@@ -25,15 +25,16 @@ func TestRenderNodeTable_WithNodes(t *testing.T) {
 		"worker-1": {TotalKB: 16000000, AvailableKB: 6000000},
 	}
 
-	result := RenderNodeTable(nodes, nil, mem, 80, 10)
+	result := RenderNodeHealth(nodes, nil, mem, 10, 12)
 	if !strings.Contains(result, "cp-1") {
 		t.Error("expected cp-1 in output")
 	}
 	if !strings.Contains(result, "worker-1") {
 		t.Error("expected worker-1 in output")
 	}
-	if !strings.Contains(result, "CP") {
-		t.Error("expected CP type in output")
+	// Should contain memory bar characters
+	if !strings.Contains(result, "█") {
+		t.Error("expected memory bar blocks in output")
 	}
 }
 
@@ -55,13 +56,12 @@ func TestRenderServiceMatrix_CPvsWorker(t *testing.T) {
 
 	result := RenderServiceMatrix(nodes, servicesByNode, 20)
 
-	// etcd should show status for CP, dash for worker
 	if !strings.Contains(result, "etcd") {
 		t.Error("expected etcd in service matrix")
 	}
-	// The "-" should appear for worker on etcd and trustd rows
-	if !strings.Contains(result, "-") {
-		t.Error("expected '-' for services not expected on worker")
+	// The "·" should appear for worker on etcd and trustd rows
+	if !strings.Contains(result, "·") {
+		t.Error("expected '·' for services not expected on worker")
 	}
 }
 
@@ -93,11 +93,47 @@ func TestShortenHostname(t *testing.T) {
 
 func TestTruncate(t *testing.T) {
 	got := truncate("hello world", 5)
-	// Truncated to 4 chars + ellipsis rune
 	if len([]rune(got)) > 5 {
 		t.Errorf("truncate should limit to 5 runes, got %q (runes=%d)", got, len([]rune(got)))
 	}
 	if got := truncate("hi", 10); got != "hi" {
 		t.Errorf("truncate should not change short strings, got %q", got)
+	}
+}
+
+func TestRenderMemBar(t *testing.T) {
+	bar := renderMemBar(0.5, 14)
+	if !strings.Contains(bar, "50%") {
+		t.Errorf("expected '50%%' in bar, got %q", bar)
+	}
+	if !strings.Contains(bar, "█") {
+		t.Error("expected filled blocks in bar")
+	}
+	if !strings.Contains(bar, "░") {
+		t.Error("expected empty blocks in bar")
+	}
+
+	// High usage should still work
+	bar = renderMemBar(0.95, 14)
+	if !strings.Contains(bar, "95%") {
+		t.Errorf("expected '95%%' in bar, got %q", bar)
+	}
+}
+
+func TestDashboardView_Empty(t *testing.T) {
+	m := New(nil, 0)
+	m.width = 120
+	m.height = 40
+	m.loading = false
+
+	v := m.View()
+	if !strings.Contains(v, "CLUSTER STATUS") {
+		t.Error("expected CLUSTER STATUS panel in view")
+	}
+	if !strings.Contains(v, "NODE HEALTH") {
+		t.Error("expected NODE HEALTH panel in view")
+	}
+	if !strings.Contains(v, "SERVICE MATRIX") {
+		t.Error("expected SERVICE MATRIX panel in view")
 	}
 }

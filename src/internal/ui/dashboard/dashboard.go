@@ -175,62 +175,87 @@ func (m Model) View() string {
 		return shared.StyleMuted.Render("  Loading cluster data...")
 	}
 
-	var sections []string
+	// Panel border style
+	panelBorder := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(shared.ColorSecondary)
 
-	// Header
-	header := m.renderHeader()
-	sections = append(sections, header)
+	halfW := m.width/2 - 1
+	if halfW < 20 {
+		halfW = 20
+	}
+	fullW := m.width - 2
 
-	if m.err != nil {
-		sections = append(sections, shared.StyleError.Render(fmt.Sprintf("  Error: %v", m.err)))
+	// --- Top row: Cluster Status (left) + Node Health (right) ---
+	nodeRows := len(m.nodes)
+	if nodeRows < 1 {
+		nodeRows = 1
+	}
+	topInnerH := nodeRows + 1 // header line + one line per node
+	if topInnerH < 3 {
+		topInnerH = 3
+	}
+	if topInnerH > m.height/3 {
+		topInnerH = m.height / 3
 	}
 
-	// Height allocation
-	headerHeight := strings.Count(header, "\n") + 1
-	remaining := m.height - headerHeight
-	if m.err != nil {
-		remaining -= 2
+	statusContent := m.renderClusterStatus(topInnerH)
+	nodeContent := m.renderNodeHealth(topInnerH)
+
+	statusPanel := panelBorder.
+		Width(halfW - 2).
+		Height(topInnerH).
+		Render(statusContent)
+	nodePanel := panelBorder.
+		Width(halfW - 2).
+		Height(topInnerH).
+		Render(nodeContent)
+
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, statusPanel, nodePanel)
+
+	// --- Middle row: Service Matrix (full width) ---
+	svcRows := len(allServices) + 1
+	if svcRows > m.height/3 {
+		svcRows = m.height / 3
+	}
+	if svcRows < 3 {
+		svcRows = 3
 	}
 
-	nodeHeight := len(m.nodes) + 2
-	if nodeHeight > remaining*30/100 {
-		nodeHeight = remaining * 30 / 100
+	svcContent := m.renderServiceMatrix(svcRows)
+	svcPanel := panelBorder.
+		Width(fullW - 2).
+		Height(svcRows).
+		Render(svcContent)
+
+	// --- Bottom row: Diagnostics (left) + Events (right) ---
+	topRowH := lipgloss.Height(topRow)
+	svcPanelH := lipgloss.Height(svcPanel)
+	bottomH := m.height - topRowH - svcPanelH
+	if bottomH < 5 {
+		bottomH = 5
 	}
-	if nodeHeight < 3 {
-		nodeHeight = 3
-	}
+	bottomInnerH := bottomH - 2 // border
 
-	serviceHeight := len(allServices) + 2
-	if serviceHeight > remaining*30/100 {
-		serviceHeight = remaining * 30 / 100
-	}
-	if serviceHeight < 3 {
-		serviceHeight = 3
-	}
+	diagContent := m.renderDiagnostics(bottomInnerH)
+	eventContent := m.renderEvents(bottomInnerH)
 
-	eventHeight := remaining - nodeHeight - serviceHeight
-	if eventHeight < 3 {
-		eventHeight = 3
-	}
+	diagPanel := panelBorder.
+		Width(halfW - 2).
+		Height(bottomInnerH).
+		Render(diagContent)
+	eventPanel := panelBorder.
+		Width(halfW - 2).
+		Height(bottomInnerH).
+		Render(eventContent)
 
-	// Node table
-	sections = append(sections, m.renderNodeTable(nodeHeight))
+	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, diagPanel, eventPanel)
 
-	// Service matrix
-	sections = append(sections, m.renderServiceMatrix(serviceHeight))
+	// Combine all rows
+	full := lipgloss.JoinVertical(lipgloss.Left, topRow, svcPanel, bottomRow)
 
-	// Events
-	sections = append(sections, m.renderEvents(eventHeight))
-
-	// Diagnostics (only if present)
-	if len(m.diagnostics) > 0 {
-		sections = append(sections, m.renderDiagnostics())
-	}
-
-	content := strings.Join(sections, "\n")
-
-	// Truncate to height
-	lines := strings.Split(content, "\n")
+	// Truncate to terminal height
+	lines := strings.Split(full, "\n")
 	if len(lines) > m.height {
 		lines = lines[:m.height]
 	}
@@ -280,39 +305,41 @@ func (m Model) fetchServices() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		resp, err := client.C.ServiceList(ctx)
-		if err != nil {
-			return servicesLoadedMsg{err: err}
-		}
-
 		byNode := make(map[string][]serviceRow)
-		for _, nodeMsg := range resp.GetMessages() {
-			if nodeMsg.GetMetadata() == nil {
+		for _, endpoint := range client.Endpoints {
+			nodeCtx := talosclient.WithNodes(ctx, endpoint)
+			resp, err := client.C.ServiceList(nodeCtx)
+			if err != nil {
 				continue
 			}
-			hostname := nodeMsg.GetMetadata().GetHostname()
-			if hostname == "" {
-				continue
-			}
-			var svcs []serviceRow
-			for _, svc := range nodeMsg.GetServices() {
-				health := "?"
-				if svc.GetHealth() != nil {
-					if svc.GetHealth().GetUnknown() {
-						health = "?"
-					} else if svc.GetHealth().GetHealthy() {
-						health = "OK"
-					} else {
-						health = "Failed"
-					}
+			for _, nodeMsg := range resp.GetMessages() {
+				if nodeMsg.GetMetadata() == nil {
+					continue
 				}
-				svcs = append(svcs, serviceRow{
-					ServiceID: svc.GetId(),
-					State:     svc.GetState(),
-					Health:    health,
-				})
+				hostname := nodeMsg.GetMetadata().GetHostname()
+				if hostname == "" {
+					hostname = endpoint
+				}
+				var svcs []serviceRow
+				for _, svc := range nodeMsg.GetServices() {
+					health := "?"
+					if svc.GetHealth() != nil {
+						if svc.GetHealth().GetUnknown() {
+							health = "?"
+						} else if svc.GetHealth().GetHealthy() {
+							health = "OK"
+						} else {
+							health = "Failed"
+						}
+					}
+					svcs = append(svcs, serviceRow{
+						ServiceID: svc.GetId(),
+						State:     svc.GetState(),
+						Health:    health,
+					})
+				}
+				byNode[hostname] = svcs
 			}
-			byNode[hostname] = svcs
 		}
 		return servicesLoadedMsg{servicesByNode: byNode}
 	}
@@ -327,23 +354,25 @@ func (m Model) fetchMemory() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		resp, err := client.C.Memory(ctx)
-		if err != nil {
-			return memoryLoadedMsg{err: err}
-		}
-
 		byNode := make(map[string]memStats)
-		for _, nodeMsg := range resp.GetMessages() {
-			if nodeMsg.GetMetadata() == nil || nodeMsg.GetMeminfo() == nil {
+		for _, endpoint := range client.Endpoints {
+			nodeCtx := talosclient.WithNodes(ctx, endpoint)
+			resp, err := client.C.Memory(nodeCtx)
+			if err != nil {
 				continue
 			}
-			hostname := nodeMsg.GetMetadata().GetHostname()
-			if hostname == "" {
-				continue
-			}
-			byNode[hostname] = memStats{
-				TotalKB:     nodeMsg.GetMeminfo().GetMemtotal(),
-				AvailableKB: nodeMsg.GetMeminfo().GetMemavailable(),
+			for _, nodeMsg := range resp.GetMessages() {
+				if nodeMsg.GetMetadata() == nil || nodeMsg.GetMeminfo() == nil {
+					continue
+				}
+				hostname := nodeMsg.GetMetadata().GetHostname()
+				if hostname == "" {
+					hostname = endpoint
+				}
+				byNode[hostname] = memStats{
+					TotalKB:     nodeMsg.GetMeminfo().GetMemtotal(),
+					AvailableKB: nodeMsg.GetMeminfo().GetMemavailable(),
+				}
 			}
 		}
 		return memoryLoadedMsg{memoryByNode: byNode}
@@ -413,37 +442,13 @@ func (m Model) fetchDiagnostics() tea.Cmd {
 	}
 }
 
-func (m Model) renderDiagnostics() string {
-	title := shared.StyleHeader.Render("  DIAGNOSTICS")
-	lines := []string{title}
-
-	for _, d := range m.diagnostics {
-		node := shortenHostname(d.NodeHostname)
-		style := shared.StyleWarning
-		severity := "WARNING"
-		if d.Severity == "error" {
-			style = shared.StyleError
-			severity = "ERROR"
-		} else if d.Severity == "info" {
-			style = shared.StyleMuted
-			severity = "INFO"
-		}
-		line := fmt.Sprintf("  [%-8s] %s: %s",
-			node,
-			style.Render(severity),
-			d.Message,
-		)
-		lines = append(lines, line)
-	}
-
-	return strings.Join(lines, "\n")
-}
-
 // --- Rendering helpers ---
 
-func (m Model) renderHeader() string {
+func (m Model) renderClusterStatus(maxLines int) string {
 	cpCount := 0
 	workerCount := 0
+	healthyCount := 0
+	failedCount := 0
 	version := ""
 	for _, n := range m.nodes {
 		if n.IsControlPlane() {
@@ -454,6 +459,22 @@ func (m Model) renderHeader() string {
 		if version == "" && n.TalosVersion != "" {
 			version = n.TalosVersion
 		}
+		if n.Healthy {
+			healthyCount++
+		}
+		// Check service health
+		nodeFailed := false
+		if svcs, ok := m.servicesByNode[n.Hostname]; ok {
+			for _, s := range svcs {
+				if s.Health == "Failed" {
+					nodeFailed = true
+					break
+				}
+			}
+		}
+		if nodeFailed {
+			failedCount++
+		}
 	}
 
 	contextName := ""
@@ -461,37 +482,65 @@ func (m Model) renderHeader() string {
 		contextName = m.client.ContextName
 	}
 
-	header := shared.StyleHeader.Render(fmt.Sprintf(
-		"  CLUSTER: %s  %d nodes  %d CP / %d Worker  %s",
-		contextName, len(m.nodes), cpCount, workerCount, version,
-	))
+	title := shared.StyleHeader.Render("CLUSTER STATUS")
+	var lines []string
+	lines = append(lines, title)
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("%s  %s", shared.StyleMuted.Render("Context:"), shared.StyleValue.Render(contextName)))
+	lines = append(lines, fmt.Sprintf("%s  %s",
+		shared.StyleMuted.Render("Nodes:"),
+		shared.StyleValue.Render(fmt.Sprintf("%d  (%d CP / %d Worker)", len(m.nodes), cpCount, workerCount))))
+	lines = append(lines, fmt.Sprintf("%s  %s", shared.StyleMuted.Render("Version:"), shared.StyleValue.Render(version)))
 
-	sep := shared.StyleMuted.Render("  " + strings.Repeat("\u2550", min(m.width-4, 80)))
+	// Overall health
+	healthStr := shared.StyleSuccess.Render(shared.StatusIcon("Running") + " All healthy")
+	if failedCount > 0 {
+		healthStr = shared.StyleError.Render(fmt.Sprintf("%s %d node(s) degraded", shared.StatusIcon("Failed"), failedCount))
+	} else if len(m.servicesByNode) == 0 {
+		healthStr = shared.StyleMuted.Render("? Awaiting data")
+	}
+	lines = append(lines, fmt.Sprintf("%s  %s", shared.StyleMuted.Render("Health:"), healthStr))
 
-	return header + "\n" + sep
-}
-
-// RenderNodeTable renders the node summary section. Exported for testing.
-func RenderNodeTable(nodes []cluster.NodeInfo, servicesByNode map[string][]serviceRow, memoryByNode map[string]memStats, width, maxLines int) string {
-	if len(nodes) == 0 {
-		return shared.StyleMuted.Render("  No nodes found")
+	// Refresh time
+	if !m.lastRefresh.IsZero() {
+		ago := time.Since(m.lastRefresh).Truncate(time.Second)
+		lines = append(lines, fmt.Sprintf("%s  %s", shared.StyleMuted.Render("Updated:"), shared.StyleValue.Render(ago.String()+" ago")))
 	}
 
-	// Column headers
-	header := fmt.Sprintf("  %-24s %-6s %-8s %-6s",
-		"NODE", "TYPE", "HEALTH", "MEM%")
-	lines := []string{shared.StyleHeader.Render(header)}
+	// Error
+	if m.err != nil {
+		lines = append(lines, shared.StyleError.Render(fmt.Sprintf("Error: %v", m.err)))
+	}
+
+	for len(lines) < maxLines {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines[:maxLines], "\n")
+}
+
+// RenderNodeHealth renders the node health panel with memory bars.
+func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serviceRow, memoryByNode map[string]memStats, maxLines, barWidth int) string {
+	title := shared.StyleHeader.Render("NODE HEALTH")
+	lines := []string{title}
+
+	if len(nodes) == 0 {
+		lines = append(lines, shared.StyleMuted.Render("No nodes found"))
+		for len(lines) < maxLines {
+			lines = append(lines, "")
+		}
+		return strings.Join(lines[:maxLines], "\n")
+	}
 
 	for i, n := range nodes {
 		if i+2 >= maxLines {
 			break
 		}
-		typeStr := "Worker"
+		typeStr := shared.StyleMuted.Render("Wk")
 		if n.IsControlPlane() {
-			typeStr = "CP"
+			typeStr = lipgloss.NewStyle().Foreground(shared.ColorPrimary).Render("CP")
 		}
 
-		// Determine health from services
+		// Health icon
 		healthIcon := shared.StatusIcon("Running")
 		healthStyle := shared.StyleSuccess
 		if svcs, ok := servicesByNode[n.Hostname]; ok {
@@ -504,34 +553,73 @@ func RenderNodeTable(nodes []cluster.NodeInfo, servicesByNode map[string][]servi
 			}
 		}
 
-		// Memory percentage
-		memStr := "N/A"
+		// Memory bar
+		memBar := shared.StyleMuted.Render("  N/A")
 		if mem, ok := memoryByNode[n.Hostname]; ok && mem.TotalKB > 0 {
 			used := mem.TotalKB - mem.AvailableKB
-			pct := float64(used) / float64(mem.TotalKB) * 100
-			memStr = fmt.Sprintf("%.0f%%", pct)
+			pct := float64(used) / float64(mem.TotalKB)
+			memBar = renderMemBar(pct, barWidth)
 		}
 
-		row := fmt.Sprintf("  %-24s %-6s %s       %-6s",
-			truncate(n.Hostname, 24),
+		row := fmt.Sprintf("%-16s %s %s %s",
+			truncate(shortenHostname(n.Hostname), 16),
 			typeStr,
 			healthStyle.Render(healthIcon),
-			memStr,
+			memBar,
 		)
 		lines = append(lines, row)
 	}
 
-	return strings.Join(lines, "\n")
+	for len(lines) < maxLines {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines[:maxLines], "\n")
 }
 
-func (m Model) renderNodeTable(maxLines int) string {
-	return RenderNodeTable(m.nodes, m.servicesByNode, m.memoryByNode, m.width, maxLines)
+func (m Model) renderNodeHealth(maxLines int) string {
+	barW := m.width/2 - 30
+	if barW < 8 {
+		barW = 8
+	}
+	if barW > 30 {
+		barW = 30
+	}
+	return RenderNodeHealth(m.nodes, m.servicesByNode, m.memoryByNode, maxLines, barW)
+}
+
+// renderMemBar creates a block-character memory bar like "62% ████████░░░░"
+func renderMemBar(pct float64, width int) string {
+	if width < 4 {
+		width = 4
+	}
+	pctStr := fmt.Sprintf("%2.0f%%", pct*100)
+	barW := width - 4 // space for "62% "
+	if barW < 1 {
+		barW = 1
+	}
+	filled := int(pct * float64(barW))
+	if filled > barW {
+		filled = barW
+	}
+	empty := barW - filled
+
+	barStyle := shared.StyleSuccess
+	if pct > 0.8 {
+		barStyle = shared.StyleError
+	} else if pct > 0.6 {
+		barStyle = shared.StyleWarning
+	}
+
+	bar := barStyle.Render(strings.Repeat("█", filled)) +
+		shared.StyleMuted.Render(strings.Repeat("░", empty))
+	return fmt.Sprintf("%s %s", pctStr, bar)
 }
 
 // RenderServiceMatrix renders the service status matrix. Exported for testing.
 func RenderServiceMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]serviceRow, maxLines int) string {
+	title := shared.StyleHeader.Render("SERVICE MATRIX")
 	if len(nodes) == 0 {
-		return ""
+		return title + "\n" + shared.StyleMuted.Render("No nodes")
 	}
 
 	// Build service lookup per node
@@ -544,7 +632,6 @@ func RenderServiceMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]s
 		svcByNodeAndID[hostname] = svcMap
 	}
 
-	// Build a set of expected services per node type
 	cpSet := make(map[string]bool)
 	for _, s := range cpServices {
 		cpSet[s] = true
@@ -554,24 +641,23 @@ func RenderServiceMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]s
 		workerSet[s] = true
 	}
 
-	// Header: short node names
 	shortNames := make([]string, len(nodes))
 	for i, n := range nodes {
 		shortNames[i] = shortenHostname(n.Hostname)
 	}
 
-	nodeColWidth := 6
-	header := fmt.Sprintf("  %-14s", "SERVICE")
+	nodeColWidth := 8
+	header := fmt.Sprintf("%-14s", "SERVICE")
 	for _, sn := range shortNames {
 		header += fmt.Sprintf("%-*s", nodeColWidth, truncate(sn, nodeColWidth-1))
 	}
-	lines := []string{shared.StyleHeader.Render(header)}
+	lines := []string{title, shared.StyleMuted.Render(header)}
 
 	for idx, svcName := range allServices {
-		if idx+2 >= maxLines {
+		if idx+3 >= maxLines {
 			break
 		}
-		row := fmt.Sprintf("  %-14s", svcName)
+		row := fmt.Sprintf("%-14s", svcName)
 		for _, n := range nodes {
 			expectedSet := workerSet
 			if n.IsControlPlane() {
@@ -579,7 +665,7 @@ func RenderServiceMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]s
 			}
 
 			if !expectedSet[svcName] {
-				row += shared.StyleMuted.Render(fmt.Sprintf("%-*s", nodeColWidth, "-"))
+				row += shared.StyleMuted.Render(fmt.Sprintf("%-*s", nodeColWidth, "·"))
 				continue
 			}
 
@@ -606,16 +692,60 @@ func (m Model) renderServiceMatrix(maxLines int) string {
 	return RenderServiceMatrix(m.nodes, m.servicesByNode, maxLines)
 }
 
-func (m Model) renderEvents(maxLines int) string {
-	title := shared.StyleHeader.Render("  RECENT EVENTS")
-	if m.followEvents {
-		title += shared.StyleMuted.Render(" (following)")
+func (m Model) renderDiagnostics(maxLines int) string {
+	title := shared.StyleHeader.Render("DIAGNOSTICS")
+	lines := []string{title}
+
+	if len(m.diagnostics) == 0 {
+		lines = append(lines, shared.StyleSuccess.Render(shared.StatusIcon("Running")+" No issues"))
+		for len(lines) < maxLines {
+			lines = append(lines, "")
+		}
+		return strings.Join(lines[:maxLines], "\n")
 	}
+
+	for i, d := range m.diagnostics {
+		if i+2 >= maxLines {
+			break
+		}
+		node := shortenHostname(d.NodeHostname)
+		style := shared.StyleWarning
+		icon := shared.StatusIcon("Degraded")
+		if d.Severity == "error" {
+			style = shared.StyleError
+			icon = shared.StatusIcon("Failed")
+		} else if d.Severity == "info" {
+			style = shared.StyleMuted
+			icon = shared.StatusIcon("Running")
+		}
+		line := fmt.Sprintf("%s %s %s",
+			style.Render(icon),
+			shared.StyleMuted.Render(fmt.Sprintf("[%-8s]", node)),
+			d.Message,
+		)
+		lines = append(lines, line)
+	}
+
+	for len(lines) < maxLines {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines[:maxLines], "\n")
+}
+
+func (m Model) renderEvents(maxLines int) string {
+	followTag := ""
+	if m.followEvents {
+		followTag = shared.StyleMuted.Render(" (following)")
+	}
+	title := shared.StyleHeader.Render("RECENT EVENTS") + followTag
 	lines := []string{title}
 
 	if len(m.events) == 0 {
-		lines = append(lines, shared.StyleMuted.Render("  No events"))
-		return strings.Join(lines, "\n")
+		lines = append(lines, shared.StyleMuted.Render("No events"))
+		for len(lines) < maxLines {
+			lines = append(lines, "")
+		}
+		return strings.Join(lines[:maxLines], "\n")
 	}
 
 	startIdx := 0
@@ -639,13 +769,15 @@ func (m Model) renderEvents(maxLines int) string {
 	for i := startIdx; i < len(m.events) && i < startIdx+visible; i++ {
 		ev := m.events[i]
 		nodeColor := nodeColorFor(ev.Node)
-		nodeTag := lipgloss.NewStyle().Foreground(nodeColor).Render(fmt.Sprintf("[%-8s]", ev.Node))
-		actorTag := shared.StyleMuted.Render(fmt.Sprintf("[%-10s]", truncate(ev.Actor, 10)))
-		line := fmt.Sprintf("  %s%s %s", nodeTag, actorTag, ev.Message)
+		nodeTag := lipgloss.NewStyle().Foreground(nodeColor).Render(fmt.Sprintf("[%-6s]", truncate(ev.Node, 6)))
+		line := fmt.Sprintf("%s %s", nodeTag, ev.Message)
 		lines = append(lines, line)
 	}
 
-	return strings.Join(lines, "\n")
+	for len(lines) < maxLines {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines[:maxLines], "\n")
 }
 
 // --- Utility functions ---
