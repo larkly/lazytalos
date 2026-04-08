@@ -11,6 +11,7 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
 
 	"github.com/larkly/lazytalos/internal/cluster"
@@ -309,7 +310,7 @@ func (m *Model) adjustScroll() {
 }
 
 func (m Model) visibleRows() int {
-	v := m.height - 3 // header + column row + filter row
+	v := m.height - 4 // title + filter + column header + separator
 	if v < 1 {
 		return 1
 	}
@@ -333,24 +334,61 @@ func (m Model) viewList() string {
 		return shared.StyleMuted.Render("  Loading nodes...")
 	}
 
-	var lines []string
+	var b strings.Builder
 
-	// Filter row
-	if m.filterActive {
-		lines = append(lines, shared.StyleWarning.Render(fmt.Sprintf("  Filter: %s_", m.filter)))
-	} else if m.filter != "" {
-		lines = append(lines, shared.StyleMuted.Render(fmt.Sprintf("  Filter: %s", m.filter)))
+	// Title line with count
+	title := shared.StyleTitle.Render("Nodes")
+	count := shared.StyleMuted.Render(fmt.Sprintf(" (%d)", len(m.filtered)))
+	if len(m.selected) > 0 {
+		count += shared.StyleMuted.Render(fmt.Sprintf("  %d selected", len(m.selected)))
 	}
+	b.WriteString(title + count + "\n")
 
-	// Column header
-	header := fmt.Sprintf("  [ ] %-26s %-14s %-10s %-8s %-16s",
-		"HOSTNAME", "TYPE", "VERSION", "HEALTH", "IP")
-	lines = append(lines, shared.StyleHeader.Render(header))
+	// Filter bar
+	if m.filterActive {
+		b.WriteString("  / " + shared.StyleWarning.Render(m.filter+"_") + "\n")
+	} else if m.filter != "" {
+		b.WriteString(shared.StyleMuted.Render(fmt.Sprintf("  filter: %s", m.filter)) + "\n")
+	} else {
+		b.WriteString("\n")
+	}
 
 	if m.err != nil {
-		lines = append(lines, shared.StyleError.Render(fmt.Sprintf("  Error: %v", m.err)))
+		b.WriteString(shared.StyleError.Render(fmt.Sprintf("  Error: %v", m.err)) + "\n")
 	}
 
+	// Column widths — dynamic based on terminal width
+	// Prefix(2) + name + gap + type(14) + gap + version(10) + gap + health(8) + gap + ip
+	nameW := m.width - 2 - 14 - 10 - 8 - 4 // 4 gaps
+	ipW := 0
+	if nameW > 40 {
+		ipW = nameW - 30
+		nameW = 30
+	}
+
+	// Sort indicator
+	sortIndicator := func(col sortField) string {
+		if m.sortBy == col {
+			return " ▲"
+		}
+		return ""
+	}
+
+	// Header
+	header := fmt.Sprintf("  %-*s %-14s %-10s %-8s",
+		nameW, "HOSTNAME"+sortIndicator(sortByHostname),
+		"TYPE"+sortIndicator(sortByType),
+		"VERSION",
+		"HEALTH"+sortIndicator(sortByHealth))
+	if ipW > 0 {
+		header += fmt.Sprintf(" %-*s", ipW, "IP")
+	}
+	b.WriteString(shared.StyleHeader.Render(header) + "\n")
+
+	// Separator
+	b.WriteString(shared.StyleMuted.Render(strings.Repeat("─", m.width)) + "\n")
+
+	// Rows
 	visible := m.visibleRows()
 	endIdx := m.scrollOff + visible
 	if endIdx > len(m.filtered) {
@@ -359,16 +397,13 @@ func (m Model) viewList() string {
 
 	for i := m.scrollOff; i < endIdx; i++ {
 		n := m.filtered[i]
-		check := "   "
-		if m.selected[n.Hostname] {
-			check = " x "
-		}
+		isCursor := i == m.cursor
+		isSelected := m.selected[n.Hostname]
 
-		cursor := " "
-		isCursor := false
-		if i == m.cursor {
-			cursor = ">"
-			isCursor = true
+		// Selection marker
+		prefix := "  "
+		if isSelected {
+			prefix = "● "
 		}
 
 		typeStr := "worker"
@@ -377,32 +412,58 @@ func (m Model) viewList() string {
 		}
 
 		healthIcon := shared.StatusIcon("Running")
-		healthStr := shared.StyleSuccess.Render(healthIcon)
+		healthStyle := shared.StyleSuccess
+		if !n.Healthy {
+			healthIcon = shared.StatusIcon("Failed")
+			healthStyle = shared.StyleError
+		}
 
 		ip := ""
 		if len(n.Addresses) > 0 {
 			ip = n.Addresses[0]
 		}
 
-		row := fmt.Sprintf("%s[%s] %-26s %-14s %-10s %-8s %-16s",
-			cursor,
-			check,
-			truncate(n.Hostname, 26),
+		// Build plain row for alignment, then apply styling
+		nameStr := truncate(n.Hostname, nameW)
+		row := fmt.Sprintf("%-*s %-14s %-10s %s %-6s",
+			nameW, nameStr,
 			typeStr,
 			n.TalosVersion,
-			healthStr,
-			ip,
-		)
-		lines = append(lines, renderRow(isCursor, row))
+			healthStyle.Render(healthIcon),
+			"")
+		if ipW > 0 {
+			row += fmt.Sprintf(" %-*s", ipW, truncate(ip, ipW))
+		}
+
+		// Apply row background and styling
+		hasBg := isCursor || isSelected
+		prefixStyle := lipgloss.NewStyle()
+		rowStyle := lipgloss.NewStyle()
+
+		if isCursor {
+			bg := lipgloss.Color("#073642")
+			prefixStyle = prefixStyle.Background(bg)
+			rowStyle = rowStyle.Background(bg).Bold(true)
+		} else if isSelected {
+			bg := lipgloss.Color("#1a1a2e")
+			prefixStyle = prefixStyle.Background(bg).Foreground(shared.ColorPrimary)
+			rowStyle = rowStyle.Background(bg)
+		}
+
+		fullRow := prefixStyle.Render(prefix) + rowStyle.Render(row)
+
+		// Pad to full width for consistent background
+		if hasBg {
+			rowW := lipgloss.Width(fullRow)
+			if rowW < m.width {
+				fullRow += rowStyle.Render(strings.Repeat(" ", m.width-rowW))
+			}
+		}
+
+		b.WriteString(fullRow + "\n")
 	}
 
-	// Selection info
-	if len(m.selected) > 0 {
-		lines = append(lines, shared.StyleMuted.Render(fmt.Sprintf("  %d node(s) selected", len(m.selected))))
-	}
-
-	content := strings.Join(lines, "\n")
-	return content
+	return b.String()
 }
 
 func (m Model) viewDetail() string {
@@ -571,12 +632,6 @@ func (m Model) fetchServicesForDetail() tea.Cmd {
 	}
 }
 
-func renderRow(highlighted bool, s string) string {
-	if highlighted {
-		return shared.StyleSelected.Render(s)
-	}
-	return s
-}
 
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
