@@ -143,7 +143,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case shared.NodeUpgradeErrMsg:
 		return m.handleNodeUpgradeErr(msg)
 	case pollHealthTickMsg:
-		cmd := upgradelib.PollHealth(context.Background(), m.client, msg.index, msg.hostname)
+		cmd := upgradelib.PollHealth(context.Background(), m.client, msg.index, msg.hostname) // hostname field carries address
 		return m, cmd
 	}
 
@@ -217,8 +217,13 @@ func (m Model) handleEnter() (Model, tea.Cmd) {
 		m.imageInput.Focus()
 		return m, nil
 	case 1:
-		if strings.TrimSpace(m.imageInput.Value()) == "" {
+		img := strings.TrimSpace(m.imageInput.Value())
+		if img == "" {
 			m.errMsg = "Image cannot be empty"
+			return m, nil
+		}
+		if !strings.Contains(img, "/") || (!strings.Contains(img, ":") && !strings.Contains(img, "@")) {
+			m.errMsg = "Image must be a container reference (e.g. ghcr.io/siderolabs/installer:v1.12.4)"
 			return m, nil
 		}
 		m.errMsg = ""
@@ -321,8 +326,8 @@ func (m Model) handleNodeUpgraded(msg shared.NodeUpgradedMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.state.Nodes[idx].Phase = upgradelib.NodePhaseWaitingHealth
-	hostname := m.state.Nodes[idx].Hostname
-	cmd := upgradelib.PollHealth(context.Background(), m.client, idx, hostname)
+	addr := m.state.Nodes[idx].Address
+	cmd := upgradelib.PollHealth(context.Background(), m.client, idx, addr)
 	return m, cmd
 }
 
@@ -364,15 +369,23 @@ func (m Model) handleNodeHealthy(msg shared.NodeHealthyMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
+const maxHealthRetries = 20 // 20 * 3s = 60s max wait for health
+
 func (m Model) handleNodeHealthErr(msg shared.NodeHealthErrMsg) (Model, tea.Cmd) {
 	idx := msg.Index
 	if idx < 0 || idx >= len(m.state.Nodes) {
 		return m, nil
 	}
-	// Retry after a short delay.
-	hostname := m.state.Nodes[idx].Hostname
+	m.state.Nodes[idx].HealthRetries++
+	if m.state.Nodes[idx].HealthRetries >= maxHealthRetries {
+		m.state.Nodes[idx].Phase = upgradelib.NodePhaseError
+		m.state.Nodes[idx].ErrMsg = "health check timed out after 60s"
+		m.state.Paused = true
+		return m, nil
+	}
+	addr := m.state.Nodes[idx].Address
 	return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg {
-		return pollHealthTickMsg{index: idx, hostname: hostname}
+		return pollHealthTickMsg{index: idx, hostname: addr}
 	})
 }
 

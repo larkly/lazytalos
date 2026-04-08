@@ -224,9 +224,9 @@ func (m Model) renderDevices(maxLines int) string {
 		}
 		sizeStr := formatSize(d.Size)
 		row := fmt.Sprintf("  %-22s %-6s %-6s %-12s %s",
-			truncate(d.NodeHostname, 22),
-			truncate(d.Name, 6),
-			truncate(d.DevType, 6),
+			shared.Truncate(d.NodeHostname, 22),
+			shared.Truncate(d.Name, 6),
+			shared.Truncate(d.DevType, 6),
 			sizeStr,
 			d.BusPath,
 		)
@@ -256,11 +256,11 @@ func (m Model) renderVolumes(maxLines int) string {
 	for _, v := range m.discoveredVols {
 		sizeStr := formatSize(v.Size)
 		row := fmt.Sprintf("  %-22s %-8s %-8s %-8s %-22s %s",
-			truncate(v.NodeHostname, 22),
-			truncate(v.Name, 8),
-			truncate(v.FSType, 8),
-			truncate(v.Label, 8),
-			truncate(v.UUID, 22),
+			shared.Truncate(v.NodeHostname, 22),
+			shared.Truncate(v.Name, 8),
+			shared.Truncate(v.FSType, 8),
+			shared.Truncate(v.Label, 8),
+			shared.Truncate(v.UUID, 22),
 			sizeStr,
 		)
 		lines = append(lines, row)
@@ -280,9 +280,9 @@ func (m Model) renderVolumes(maxLines int) string {
 
 	for _, s := range m.volStatuses {
 		row := fmt.Sprintf("  %-22s %-14s %-10s %s",
-			truncate(s.NodeHostname, 22),
-			truncate(s.Name, 14),
-			truncate(s.Phase, 10),
+			shared.Truncate(s.NodeHostname, 22),
+			shared.Truncate(s.Name, 14),
+			shared.Truncate(s.Phase, 10),
 			s.MountSpec,
 		)
 		lines = append(lines, row)
@@ -322,12 +322,3 @@ func formatSize(bytes uint64) string {
 	return fmt.Sprintf("%.1f MiB", float64(bytes)/mib)
 }
 
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 3 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-1] + "\u2026"
-}

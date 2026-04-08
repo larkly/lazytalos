@@ -349,7 +349,7 @@ func (m Model) viewList() string {
 			cursor = ">"
 		}
 
-		stateStr := truncate(c.State, stateW)
+		stateStr := shared.Truncate(c.State, stateW)
 		var stateRendered string
 		if strings.ToUpper(c.State) == "RUNNING" {
 			stateRendered = shared.StyleSuccess.Render(stateStr)
@@ -364,12 +364,12 @@ func (m Model) viewList() string {
 
 		row := fmt.Sprintf("%s %-*s %-*s %-*s %-*s %-*s %-*s",
 			cursor,
-			nodeW, truncate(c.NodeHostname, nodeW),
-			nsW, truncate(c.Namespace, nsW),
-			nameW, truncate(c.Name, nameW),
-			imageW, truncate(c.Image, imageW),
+			nodeW, shared.Truncate(c.NodeHostname, nodeW),
+			nsW, shared.Truncate(c.Namespace, nsW),
+			nameW, shared.Truncate(c.Name, nameW),
+			imageW, shared.Truncate(c.Image, imageW),
 			stateW, stateRendered,
-			pidW, truncate(pidStr, pidW),
+			pidW, shared.Truncate(pidStr, pidW),
 		)
 		lines = append(lines, renderRow(isCursor, row))
 	}
@@ -461,15 +461,3 @@ func renderRow(highlighted bool, s string) string {
 	return s
 }
 
-func truncate(s string, maxLen int) string {
-	if maxLen <= 0 {
-		return ""
-	}
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 1 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-1] + "\u2026"
-}

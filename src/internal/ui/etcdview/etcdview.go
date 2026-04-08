@@ -194,10 +194,10 @@ func (m Model) viewMembers() string {
 		memberIDHex := fmt.Sprintf("%x", mem.MemberID)
 
 		row := fmt.Sprintf("  %-*s %-*s %-*s %-*s %s",
-			idW, truncate(memberIDHex, idW),
-			hostW, truncate(mem.Hostname, hostW),
-			peerW, truncate(peerAddr, peerW),
-			clientW, truncate(clientAddr, clientW),
+			idW, shared.Truncate(memberIDHex, idW),
+			hostW, shared.Truncate(mem.Hostname, hostW),
+			peerW, shared.Truncate(peerAddr, peerW),
+			clientW, shared.Truncate(clientAddr, clientW),
 			leader,
 		)
 
@@ -297,15 +297,3 @@ func (m Model) ForceRefresh() tea.Cmd {
 	}
 }
 
-func truncate(s string, maxLen int) string {
-	if maxLen <= 0 {
-		return ""
-	}
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 1 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-1] + "\u2026"
-}

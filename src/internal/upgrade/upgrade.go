@@ -25,11 +25,13 @@ const (
 
 // NodeState holds the per-node upgrade tracking state.
 type NodeState struct {
-	Hostname   string
-	Phase      NodePhase
-	ErrMsg     string
-	StartedAt  time.Time
-	FinishedAt time.Time
+	Hostname      string
+	Address       string // routable IP for WithNodes; falls back to Hostname
+	Phase         NodePhase
+	ErrMsg        string
+	StartedAt     time.Time
+	FinishedAt    time.Time
+	HealthRetries int
 }
 
 // Options holds the parameters for a cluster upgrade.
@@ -61,24 +63,26 @@ func NewState(nodes []cluster.NodeInfo, opts Options) State {
 	ordered := append(workers, cps...)
 	states := make([]NodeState, len(ordered))
 	for i, n := range ordered {
-		states[i] = NodeState{Hostname: n.Hostname, Phase: NodePhasePending}
+		addr := n.Hostname
+		if len(n.Addresses) > 0 {
+			addr = n.Addresses[0]
+		}
+		states[i] = NodeState{Hostname: n.Hostname, Address: addr, Phase: NodePhasePending}
 	}
 	return State{Nodes: states, Options: opts, Active: -1}
 }
 
 // StartNode issues the Upgrade RPC for State.Nodes[idx].
-// Note: UpgradeWithOptions (preserve) is not available in this client version;
-// the preserve flag from Options is not forwarded.
 func StartNode(ctx context.Context, c *talos.Client, s State, idx int) tea.Cmd {
 	return func() tea.Msg {
 		if c == nil || c.C == nil {
 			return shared.NodeUpgradeErrMsg{Index: idx, Err: fmt.Errorf("no client")}
 		}
-		hostname := s.Nodes[idx].Hostname
-		nodeCtx := talosclient.WithNodes(ctx, hostname)
+		target := s.Nodes[idx].Address
+		nodeCtx := talosclient.WithNodes(ctx, target)
 		tCtx, cancel := context.WithTimeout(nodeCtx, 10*time.Minute)
 		defer cancel()
-		_, err := c.C.Upgrade(tCtx, s.Options.Image, s.Options.Stage, false)
+		_, err := c.C.Upgrade(tCtx, s.Options.Image, s.Options.Stage, s.Options.Preserve)
 		if err != nil {
 			return shared.NodeUpgradeErrMsg{Index: idx, Err: err}
 		}
@@ -87,12 +91,12 @@ func StartNode(ctx context.Context, c *talos.Client, s State, idx int) tea.Cmd {
 }
 
 // PollHealth checks if the node is back up by calling Version.
-func PollHealth(ctx context.Context, c *talos.Client, idx int, hostname string) tea.Cmd {
+func PollHealth(ctx context.Context, c *talos.Client, idx int, address string) tea.Cmd {
 	return func() tea.Msg {
 		if c == nil || c.C == nil {
 			return shared.NodeHealthErrMsg{Index: idx, Err: fmt.Errorf("no client")}
 		}
-		nodeCtx := talosclient.WithNodes(ctx, hostname)
+		nodeCtx := talosclient.WithNodes(ctx, address)
 		tCtx, cancel := context.WithTimeout(nodeCtx, 15*time.Second)
 		defer cancel()
 		_, err := c.C.Version(tCtx)

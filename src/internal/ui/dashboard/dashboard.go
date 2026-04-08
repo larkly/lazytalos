@@ -80,7 +80,7 @@ type Model struct {
 	events          []eventRow
 	diagnostics     []resources.DiagnosticEntry
 	loading         bool
-	err             error
+	errs            []error
 	width           int
 	height          int
 	refreshInterval time.Duration
@@ -128,37 +128,38 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case membersLoadedMsg:
 		if msg.err != nil {
-			m.err = msg.err
+			m.appendErr(msg.err)
 		} else {
 			m.nodes = msg.nodes
+			m.clearErr()
 		}
 		m.loading = false
 		m.lastRefresh = time.Now()
 
 	case servicesLoadedMsg:
 		if msg.err != nil {
-			m.err = msg.err
+			m.appendErr(msg.err)
 		} else {
 			m.servicesByNode = msg.servicesByNode
 		}
 
 	case memoryLoadedMsg:
 		if msg.err != nil {
-			m.err = msg.err
+			m.appendErr(msg.err)
 		} else {
 			m.memoryByNode = msg.memoryByNode
 		}
 
 	case eventsLoadedMsg:
 		if msg.err != nil {
-			m.err = msg.err
+			m.appendErr(msg.err)
 		} else {
 			m.events = msg.events
 		}
 
 	case diagnosticsLoadedMsg:
 		if msg.err != nil {
-			m.err = msg.err
+			m.appendErr(msg.err)
 		} else {
 			m.diagnostics = msg.diagnostics
 		}
@@ -289,7 +290,7 @@ func (m Model) fetchServices() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		targets, resolve := nodeTargets(ctx, client)
+		targets, resolve := cluster.NodeTargets(ctx, client)
 		nodeCtx := talosclient.WithNodes(ctx, targets...)
 		resp, err := client.C.ServiceList(nodeCtx)
 		if err != nil {
@@ -338,7 +339,7 @@ func (m Model) fetchMemory() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		targets, resolve := nodeTargets(ctx, client)
+		targets, resolve := cluster.NodeTargets(ctx, client)
 		nodeCtx := talosclient.WithNodes(ctx, targets...)
 		resp, err := client.C.Memory(nodeCtx)
 		if err != nil {
@@ -472,35 +473,6 @@ func (m Model) fetchDiagnostics() tea.Cmd {
 // a mapping from any address/IP back to the canonical hostname.
 // The Talos API returns IPs (not hostnames) in response metadata, so callers
 // must use this map to resolve response hostnames to member hostnames.
-func nodeTargets(ctx context.Context, client *talos.Client) (addrs []string, resolveHostname func(string) string) {
-	identity := func(s string) string { return s }
-	members, err := cluster.GetMembers(ctx, client)
-	if err != nil || len(members) == 0 {
-		return client.Endpoints, identity
-	}
-
-	addrToHost := make(map[string]string)
-	for _, m := range members {
-		for _, a := range m.Addresses {
-			addrToHost[a] = m.Hostname
-		}
-		// Also map hostname to itself
-		addrToHost[m.Hostname] = m.Hostname
-		if len(m.Addresses) > 0 {
-			addrs = append(addrs, m.Addresses[0])
-		}
-	}
-	if len(addrs) == 0 {
-		return client.Endpoints, identity
-	}
-	return addrs, func(s string) string {
-		if h, ok := addrToHost[s]; ok {
-			return h
-		}
-		return s
-	}
-}
-
 // --- Rendering helpers ---
 
 func (m Model) renderClusterStatus(maxLines int) string {
@@ -567,8 +539,10 @@ func (m Model) renderClusterStatus(maxLines int) string {
 	}
 
 	// Error
-	if m.err != nil {
-		lines = append(lines, shared.StyleError.Render(fmt.Sprintf("Error: %v", m.err)))
+	if len(m.errs) > 0 {
+		for _, e := range m.errs {
+			lines = append(lines, shared.StyleError.Render(fmt.Sprintf("Error: %v", e)))
+		}
 	}
 
 	for len(lines) < maxLines {
@@ -621,7 +595,7 @@ func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serv
 		}
 
 		row := fmt.Sprintf("%-16s %s %s %s",
-			truncate(shortenHostname(n.Hostname), 16),
+			shared.Truncate(shortenHostname(n.Hostname), 16),
 			typeStr,
 			healthStyle.Render(healthIcon),
 			memBar,
@@ -708,7 +682,7 @@ func RenderServiceMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]s
 	nodeColWidth := 8
 	header := fmt.Sprintf("%-14s", "SERVICE")
 	for _, sn := range shortNames {
-		header += fmt.Sprintf("%-*s", nodeColWidth, truncate(sn, nodeColWidth-1))
+		header += fmt.Sprintf("%-*s", nodeColWidth, shared.Truncate(sn, nodeColWidth-1))
 	}
 	lines := []string{title, shared.StyleMuted.Render(header)}
 
@@ -828,7 +802,7 @@ func (m Model) renderEvents(maxLines int) string {
 	for i := startIdx; i < len(m.events) && i < startIdx+visible; i++ {
 		ev := m.events[i]
 		nodeColor := nodeColorFor(ev.Node)
-		nodeTag := lipgloss.NewStyle().Foreground(nodeColor).Render(fmt.Sprintf("[%-6s]", truncate(ev.Node, 6)))
+		nodeTag := lipgloss.NewStyle().Foreground(nodeColor).Render(fmt.Sprintf("[%-6s]", shared.Truncate(ev.Node, 6)))
 		line := fmt.Sprintf("%s %s", nodeTag, ev.Message)
 		lines = append(lines, line)
 	}
@@ -837,6 +811,18 @@ func (m Model) renderEvents(maxLines int) string {
 		lines = append(lines, "")
 	}
 	return strings.Join(lines[:maxLines], "\n")
+}
+
+func (m *Model) appendErr(err error) {
+	// Keep at most 3 errors to avoid clutter
+	if len(m.errs) >= 3 {
+		m.errs = m.errs[1:]
+	}
+	m.errs = append(m.errs, err)
+}
+
+func (m *Model) clearErr() {
+	m.errs = nil
 }
 
 // --- Utility functions ---
@@ -850,16 +836,6 @@ func shortenHostname(hostname string) string {
 	return hostname
 }
 
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 3 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-1] + "\u2026"
-}
-
 func nodeColorFor(hostname string) color.Color {
 	if len(shared.NodeColors) == 0 {
 		return lipgloss.Color("#839496")
@@ -870,13 +846,6 @@ func nodeColorFor(hostname string) color.Color {
 	}
 	idx := h % len(shared.NodeColors)
 	return shared.NodeColors[idx]
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // SortNodesByHostname sorts nodes alphabetically. Exported for testing.

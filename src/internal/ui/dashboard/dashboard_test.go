@@ -92,12 +92,12 @@ func TestShortenHostname(t *testing.T) {
 }
 
 func TestTruncate(t *testing.T) {
-	got := truncate("hello world", 5)
+	got := shared.Truncate("hello world", 5)
 	if len([]rune(got)) > 5 {
-		t.Errorf("truncate should limit to 5 runes, got %q (runes=%d)", got, len([]rune(got)))
+		t.Errorf("Truncate should limit to 5 runes, got %q (runes=%d)", got, len([]rune(got)))
 	}
-	if got := truncate("hi", 10); got != "hi" {
-		t.Errorf("truncate should not change short strings, got %q", got)
+	if got := shared.Truncate("hi", 10); got != "hi" {
+		t.Errorf("Truncate should not change short strings, got %q", got)
 	}
 }
 

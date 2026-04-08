@@ -428,7 +428,7 @@ func (m Model) viewList() string {
 		}
 
 		// Build plain row for alignment, then apply styling
-		nameStr := truncate(n.Hostname, nameW)
+		nameStr := shared.Truncate(n.Hostname, nameW)
 		row := fmt.Sprintf("%-*s %-14s %-10s %s %-6s",
 			nameW, nameStr,
 			typeStr,
@@ -436,7 +436,7 @@ func (m Model) viewList() string {
 			healthStyle.Render(healthIcon),
 			"")
 		if ipW > 0 {
-			row += fmt.Sprintf(" %-*s", ipW, truncate(ip, ipW))
+			row += fmt.Sprintf(" %-*s", ipW, shared.Truncate(ip, ipW))
 		}
 
 		// Apply row background and styling
@@ -637,12 +637,3 @@ func (m Model) fetchServicesForDetail() tea.Cmd {
 }
 
 
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 1 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-1] + "\u2026"
-}

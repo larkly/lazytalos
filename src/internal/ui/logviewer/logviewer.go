@@ -299,6 +299,19 @@ func (m *Model) startStreamsForService(svc string) []tea.Cmd {
 	return cmds
 }
 
+// CleanupStreams cancels all active log streams. Called on context switch
+// to prevent goroutine leaks from streams tied to the old client.
+func (m *Model) CleanupStreams() {
+	for sk, as := range m.streams {
+		as.cancel()
+		delete(m.streams, sk)
+	}
+	m.activeNodes = make(map[string]bool)
+	m.activeServices = make(map[string]bool)
+	m.lines = nil
+	m.nodes = nil
+}
+
 func (m *Model) cancelStreamsForNode(node string) []tea.Cmd {
 	for sk, as := range m.streams {
 		if sk.Node == node {
@@ -532,8 +545,8 @@ func (m Model) renderLogPane(width int) string {
 	for i := startIdx; i < len(m.lines) && len(lines) < viewH; i++ {
 		line := m.lines[i]
 		nodeColor := nodeColorFor(line.Node)
-		nodeTag := lipgloss.NewStyle().Foreground(nodeColor).Render(fmt.Sprintf("[%-8s]", truncate(line.Node, 8)))
-		svcTag := shared.StyleMuted.Render(fmt.Sprintf("[%-10s]", truncate(line.Service, 10)))
+		nodeTag := lipgloss.NewStyle().Foreground(nodeColor).Render(fmt.Sprintf("[%-8s]", shared.Truncate(line.Node, 8)))
+		svcTag := shared.StyleMuted.Render(fmt.Sprintf("[%-10s]", shared.Truncate(line.Service, 10)))
 
 		text := line.Text
 		maxTextWidth := width - 22
@@ -598,16 +611,6 @@ func nodeColorFor(hostname string) color.Color {
 	}
 	idx := h % len(shared.NodeColors)
 	return shared.NodeColors[idx]
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 1 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-1] + "\u2026"
 }
 
 // AppendLine is exported for testing.

@@ -34,7 +34,7 @@ func EnableDebug() error {
 // enableDebugAt opens (or creates) a log file at the given path and enables debug logging.
 // It is used by EnableDebug and by tests via EnableDebugAt.
 func enableDebugAt(path string) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}

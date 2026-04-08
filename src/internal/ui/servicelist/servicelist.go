@@ -341,7 +341,7 @@ func (m Model) viewList() string {
 
 		row := fmt.Sprintf("%s %-20s %-16s %s %-10s %-8s %-40s",
 			cursor,
-			truncate(nodeDisplay, 20),
+			shared.Truncate(nodeDisplay, 20),
 			r.ServiceID,
 			stateStyle.Render(stateIcon),
 			r.State,
@@ -431,7 +431,7 @@ func (m Model) fetchServices() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		targets, resolve := nodeTargets(ctx, client)
+		targets, resolve := cluster.NodeTargets(ctx, client)
 		nodeCtx := talosclient.WithNodes(ctx, targets...)
 		resp, err := client.C.ServiceList(nodeCtx)
 		if err != nil {
@@ -514,39 +514,5 @@ func BuildRows(byNode map[string][]ServiceListRow) []ServiceListRow {
 	return rows
 }
 
-func nodeTargets(ctx context.Context, client *talos.Client) (addrs []string, resolveHostname func(string) string) {
-	identity := func(s string) string { return s }
-	members, err := cluster.GetMembers(ctx, client)
-	if err != nil || len(members) == 0 {
-		return client.Endpoints, identity
-	}
-	addrToHost := make(map[string]string)
-	for _, m := range members {
-		for _, a := range m.Addresses {
-			addrToHost[a] = m.Hostname
-		}
-		addrToHost[m.Hostname] = m.Hostname
-		if len(m.Addresses) > 0 {
-			addrs = append(addrs, m.Addresses[0])
-		}
-	}
-	if len(addrs) == 0 {
-		return client.Endpoints, identity
-	}
-	return addrs, func(s string) string {
-		if h, ok := addrToHost[s]; ok {
-			return h
-		}
-		return s
-	}
-}
 
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 1 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-1] + "\u2026"
-}
+

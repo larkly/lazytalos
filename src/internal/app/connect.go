@@ -40,6 +40,9 @@ func (m Model) switchToContextPicker() (Model, tea.Cmd) {
 	m.statusBar.Hint = "Select a context to connect"
 	m.statusBar.Connected = false
 
+	// Clean up log streams before closing client to prevent goroutine leaks
+	m.logViewer.CleanupStreams()
+
 	// Close existing client if any
 	if m.client != nil {
 		_ = m.client.Close()
