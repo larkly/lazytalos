@@ -315,7 +315,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, shared.Keys.ContextPicker) && m.view != viewContextPicker:
 			return m.switchToContextPicker()
 		case key.Matches(msg, shared.Keys.Help) && m.view != viewContextPicker:
-			m.help = m.help.Toggle()
+			m.help.Open(m.statusBar.CurrentView)
 			return m, nil
 		case key.Matches(msg, shared.Keys.ConfigView) && m.view != viewContextPicker:
 			m.configView = m.configView.Toggle()
