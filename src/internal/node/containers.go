@@ -22,41 +22,43 @@ type Container struct {
 }
 
 // ListContainers fetches all containers across all nodes in the client's context.
-// It uses the CRI namespace ("k8s.io") and the CONTAINERD driver.
+// It queries both the "system" and "k8s.io" containerd namespaces.
 func ListContainers(ctx context.Context, c *talos.Client) ([]Container, error) {
 	if c == nil || c.C == nil {
 		return nil, nil
 	}
-	resp, err := c.C.Containers(ctx, "k8s.io", common.ContainerDriver_CRI)
-	if err != nil {
-		return nil, err
-	}
 
 	var containers []Container
-	for _, nodeMsg := range resp.GetMessages() {
-		if nodeMsg.GetMetadata() == nil {
-			continue
+	for _, ns := range []string{"system", "k8s.io"} {
+		resp, err := c.C.Containers(ctx, ns, common.ContainerDriver_CONTAINERD)
+		if err != nil {
+			return containers, err
 		}
-		hostname := nodeMsg.GetMetadata().GetHostname()
-		if hostname == "" {
-			continue
-		}
-		for _, ci := range nodeMsg.GetContainers() {
-			name := ci.GetName()
-			if name == "" {
-				name = ci.GetId()
+		for _, nodeMsg := range resp.GetMessages() {
+			if nodeMsg.GetMetadata() == nil {
+				continue
 			}
-			fullImage := ci.GetImage()
-			containers = append(containers, Container{
-				NodeHostname: hostname,
-				Namespace:    ci.GetNamespace(),
-				Name:         name,
-				Image:        shortImage(fullImage),
-				FullImage:    fullImage,
-				State:        ci.GetStatus(),
-				PID:          ci.GetPid(),
-				Status:       ci.GetStatus(),
-			})
+			hostname := nodeMsg.GetMetadata().GetHostname()
+			if hostname == "" {
+				continue
+			}
+			for _, ci := range nodeMsg.GetContainers() {
+				name := ci.GetName()
+				if name == "" {
+					name = ci.GetId()
+				}
+				fullImage := ci.GetImage()
+				containers = append(containers, Container{
+					NodeHostname: hostname,
+					Namespace:    ns,
+					Name:         name,
+					Image:        shortImage(fullImage),
+					FullImage:    fullImage,
+					State:        ci.GetStatus(),
+					PID:          ci.GetPid(),
+					Status:       ci.GetStatus(),
+				})
+			}
 		}
 	}
 	return containers, nil
