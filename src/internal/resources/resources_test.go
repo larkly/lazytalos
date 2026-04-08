@@ -100,6 +100,38 @@ func TestNodeResourceZeroValues(t *testing.T) {
 	}
 }
 
+// TestDiagnosticStructZeroValues verifies that DiagnosticEntry fields exist.
+func TestDiagnosticStructZeroValues(t *testing.T) {
+	d := DiagnosticEntry{
+		NodeHostname: "node1",
+		ID:           "address-overlap",
+		Severity:     "warning",
+		Message:      "address overlap detected",
+		Details:      "10.0.0.1 overlaps with 10.0.0.0/24",
+	}
+	if d.NodeHostname != "node1" {
+		t.Fatalf("expected node1 got %s", d.NodeHostname)
+	}
+	if d.Severity != "warning" {
+		t.Fatalf("expected warning got %s", d.Severity)
+	}
+	if d.Message == "" {
+		t.Fatal("message should not be empty")
+	}
+}
+
+// TestListDiagnosticsNilClient verifies nil client returns empty without error.
+func TestListDiagnosticsNilClient(t *testing.T) {
+	ctx := t.Context()
+	diags, err := ListDiagnostics(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListDiagnostics nil client: unexpected error: %v", err)
+	}
+	if diags != nil {
+		t.Fatal("ListDiagnostics nil client: expected nil result")
+	}
+}
+
 // TestListFunctionsNilClient verifies that list functions return nil/empty when
 // the client is nil, without panicking.
 func TestListFunctionsNilClient(t *testing.T) {

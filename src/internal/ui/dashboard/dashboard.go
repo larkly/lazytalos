@@ -13,6 +13,7 @@ import (
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/larkly/lazytalos/internal/cluster"
+	"github.com/larkly/lazytalos/internal/resources"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
 	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
@@ -63,6 +64,11 @@ type eventsLoadedMsg struct {
 	err    error
 }
 
+type diagnosticsLoadedMsg struct {
+	diagnostics []resources.DiagnosticEntry
+	err         error
+}
+
 // Model is the dashboard view model.
 type Model struct {
 	client          *talos.Client
@@ -70,6 +76,7 @@ type Model struct {
 	servicesByNode  map[string][]serviceRow
 	memoryByNode    map[string]memStats
 	events          []eventRow
+	diagnostics     []resources.DiagnosticEntry
 	loading         bool
 	err             error
 	width           int
@@ -146,6 +153,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		} else {
 			m.events = msg.events
 		}
+
+	case diagnosticsLoadedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.diagnostics = msg.diagnostics
+		}
 	}
 
 	return m, nil
@@ -208,6 +222,11 @@ func (m Model) View() string {
 	// Events
 	sections = append(sections, m.renderEvents(eventHeight))
 
+	// Diagnostics (only if present)
+	if len(m.diagnostics) > 0 {
+		sections = append(sections, m.renderDiagnostics())
+	}
+
 	content := strings.Join(sections, "\n")
 
 	// Truncate to height
@@ -236,6 +255,7 @@ func (m Model) ForceRefresh() tea.Cmd {
 		m.fetchServices(),
 		m.fetchMemory(),
 		m.fetchEvents(),
+		m.fetchDiagnostics(),
 	)
 }
 
@@ -378,6 +398,45 @@ func (m Model) fetchEvents() tea.Cmd {
 
 		return eventsLoadedMsg{events: events}
 	}
+}
+
+func (m Model) fetchDiagnostics() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		if client == nil || client.C == nil {
+			return diagnosticsLoadedMsg{diagnostics: nil}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		diags, err := resources.ListDiagnostics(ctx, client)
+		return diagnosticsLoadedMsg{diagnostics: diags, err: err}
+	}
+}
+
+func (m Model) renderDiagnostics() string {
+	title := shared.StyleHeader.Render("  DIAGNOSTICS")
+	lines := []string{title}
+
+	for _, d := range m.diagnostics {
+		node := shortenHostname(d.NodeHostname)
+		style := shared.StyleWarning
+		severity := "WARNING"
+		if d.Severity == "error" {
+			style = shared.StyleError
+			severity = "ERROR"
+		} else if d.Severity == "info" {
+			style = shared.StyleMuted
+			severity = "INFO"
+		}
+		line := fmt.Sprintf("  [%-8s] %s: %s",
+			node,
+			style.Render(severity),
+			d.Message,
+		)
+		lines = append(lines, line)
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // --- Rendering helpers ---
