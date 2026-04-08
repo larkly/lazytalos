@@ -137,6 +137,10 @@ func (m Model) updateList(msg tea.KeyMsg) (Model, tea.Cmd) {
 			if !m.selected[hostname] {
 				delete(m.selected, hostname)
 			}
+			if m.cursor < len(m.filtered)-1 {
+				m.cursor++
+				m.adjustScroll()
+			}
 		}
 	case key.Matches(msg, shared.Keys.SelectAll):
 		if len(m.selected) == len(m.filtered) {

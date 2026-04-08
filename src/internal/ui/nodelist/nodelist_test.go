@@ -27,7 +27,8 @@ func TestSpaceToggle(t *testing.T) {
 		t.Error("expected cp-1 to be selected after space")
 	}
 
-	// Deselect
+	// Cursor moved to next row after select; move back to cp-1 and deselect
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: tea.KeyUp}))
 	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: ' '}))
 	if m.selected["cp-1"] {
 		t.Error("expected cp-1 to be deselected after second space")
