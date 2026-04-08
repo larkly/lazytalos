@@ -279,9 +279,9 @@ func (m *Model) SetSize(w, h int) {
 func (m Model) Hints() string {
 	switch m.subTab {
 	case subTabMembers:
-		return "[/] sub-tabs  ↑↓:select  ctrl+m:remove member"
+		return "</> sub-tabs  ↑↓:select  ctrl+m:remove member"
 	case subTabConfig:
-		return "[/] sub-tabs"
+		return "</> sub-tabs"
 	}
 	return ""
 }

@@ -160,65 +160,37 @@ func (m *Model) SetSize(w, h int) {
 
 // Hints returns status bar hint text.
 func (m Model) Hints() string {
-	return "[/:prev sub-tab  ]:next sub-tab  ↑↓:scroll  ctrl+r:refresh"
+	return "</:prev sub-tab  >/:next sub-tab  ↑↓:scroll  ctrl+r:refresh"
 }
 
 // ForceRefresh triggers an immediate data refresh.
 func (m Model) ForceRefresh() tea.Cmd {
-	return tea.Batch(
-		m.fetchAddresses(),
-		m.fetchRoutes(),
-		m.fetchDNS(),
-	)
-}
-
-// --- Data fetching ---
-
-func (m Model) fetchAddresses() tea.Cmd {
-	client := m.client
-	return func() tea.Msg {
-		if client == nil || client.C == nil {
-			return networkLoadedMsg{addresses: nil, routes: nil, dnsUpstreams: nil}
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		addrs, err := resources.ListAddresses(ctx, client)
-		if err != nil {
-			return networkLoadedMsg{err: err}
-		}
-		return networkLoadedMsg{addresses: addrs}
-	}
-}
-
-func (m Model) fetchRoutes() tea.Cmd {
 	client := m.client
 	return func() tea.Msg {
 		if client == nil || client.C == nil {
 			return networkLoadedMsg{}
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		routes, err := resources.ListRoutes(ctx, client)
-		if err != nil {
-			return networkLoadedMsg{err: err}
-		}
-		return networkLoadedMsg{routes: routes}
-	}
-}
 
-func (m Model) fetchDNS() tea.Cmd {
-	client := m.client
-	return func() tea.Msg {
-		if client == nil || client.C == nil {
-			return networkLoadedMsg{}
+		addrs, addrErr := resources.ListAddresses(ctx, client)
+		routes, routeErr := resources.ListRoutes(ctx, client)
+		dns, dnsErr := resources.ListDNSUpstreams(ctx, client)
+
+		// Report first error encountered, but still carry any data that succeeded.
+		var err error
+		for _, e := range []error{addrErr, routeErr, dnsErr} {
+			if e != nil {
+				err = e
+				break
+			}
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		dns, err := resources.ListDNSUpstreams(ctx, client)
-		if err != nil {
-			return networkLoadedMsg{err: err}
+		return networkLoadedMsg{
+			addresses:    addrs,
+			routes:       routes,
+			dnsUpstreams: dns,
+			err:          err,
 		}
-		return networkLoadedMsg{dnsUpstreams: dns}
 	}
 }
 

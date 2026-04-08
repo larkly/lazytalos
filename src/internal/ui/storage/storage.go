@@ -162,7 +162,7 @@ func (m *Model) SetSize(w, h int) {
 
 // Hints returns status bar hint text.
 func (m Model) Hints() string {
-	return "[/]:sub-tab  ↑↓:navigate  ctrl+r:refresh"
+	return "</>:sub-tab  ↑↓:navigate  ctrl+r:refresh"
 }
 
 // ForceRefresh triggers an immediate data reload.
