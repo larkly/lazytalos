@@ -5,8 +5,10 @@ import (
 	"context"
 	"strings"
 
-	"github.com/larkly/lazytalos/internal/talos"
+	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
 	"github.com/siderolabs/talos/pkg/machinery/api/common"
+
+	"github.com/larkly/lazytalos/internal/talos"
 )
 
 // Container represents a single container on a Talos node.
@@ -29,35 +31,38 @@ func ListContainers(ctx context.Context, c *talos.Client) ([]Container, error) {
 	}
 
 	var containers []Container
-	for _, ns := range []string{"system", "k8s.io"} {
-		resp, err := c.C.Containers(ctx, ns, common.ContainerDriver_CONTAINERD)
-		if err != nil {
-			return containers, err
-		}
-		for _, nodeMsg := range resp.GetMessages() {
-			if nodeMsg.GetMetadata() == nil {
+	for _, endpoint := range c.Endpoints {
+		nodeCtx := talosclient.WithNodes(ctx, endpoint)
+		for _, ns := range []string{"system", "k8s.io"} {
+			resp, err := c.C.Containers(nodeCtx, ns, common.ContainerDriver_CONTAINERD)
+			if err != nil {
 				continue
 			}
-			hostname := nodeMsg.GetMetadata().GetHostname()
-			if hostname == "" {
-				continue
-			}
-			for _, ci := range nodeMsg.GetContainers() {
-				name := ci.GetName()
-				if name == "" {
-					name = ci.GetId()
+			for _, nodeMsg := range resp.GetMessages() {
+				if nodeMsg.GetMetadata() == nil {
+					continue
 				}
-				fullImage := ci.GetImage()
-				containers = append(containers, Container{
-					NodeHostname: hostname,
-					Namespace:    ns,
-					Name:         name,
-					Image:        shortImage(fullImage),
-					FullImage:    fullImage,
-					State:        ci.GetStatus(),
-					PID:          ci.GetPid(),
-					Status:       ci.GetStatus(),
-				})
+				hostname := nodeMsg.GetMetadata().GetHostname()
+				if hostname == "" {
+					hostname = endpoint
+				}
+				for _, ci := range nodeMsg.GetContainers() {
+					name := ci.GetName()
+					if name == "" {
+						name = ci.GetId()
+					}
+					fullImage := ci.GetImage()
+					containers = append(containers, Container{
+						NodeHostname: hostname,
+						Namespace:    ns,
+						Name:         name,
+						Image:        shortImage(fullImage),
+						FullImage:    fullImage,
+						State:        ci.GetStatus(),
+						PID:          ci.GetPid(),
+						Status:       ci.GetStatus(),
+					})
+				}
 			}
 		}
 	}
