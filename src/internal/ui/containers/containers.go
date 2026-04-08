@@ -37,6 +37,7 @@ type Model struct {
 	containers      []node.Container // all fetched
 	filtered        []node.Container // after filter
 	cursor          int
+	scrollOff       int
 	filter          string
 	filterActive    bool
 	detailView      bool
@@ -102,11 +103,28 @@ func (m Model) updateList(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case key.Matches(msg, shared.Keys.Down):
 		if m.cursor < len(m.filtered)-1 {
 			m.cursor++
+			m.adjustScroll()
 		}
 	case key.Matches(msg, shared.Keys.Up):
 		if m.cursor > 0 {
 			m.cursor--
+			m.adjustScroll()
 		}
+	case key.Matches(msg, shared.Keys.PageDown):
+		m.cursor += m.visibleRows()
+		if m.cursor >= len(m.filtered) {
+			m.cursor = len(m.filtered) - 1
+		}
+		if m.cursor < 0 {
+			m.cursor = 0
+		}
+		m.adjustScroll()
+	case key.Matches(msg, shared.Keys.PageUp):
+		m.cursor -= m.visibleRows()
+		if m.cursor < 0 {
+			m.cursor = 0
+		}
+		m.adjustScroll()
 	case key.Matches(msg, shared.Keys.Enter):
 		if m.cursor < len(m.filtered) {
 			m.detailView = true
@@ -133,12 +151,29 @@ func (m Model) updateList(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.sortBy = (m.sortBy + 1) % sortFieldMax
 		m.sortData()
 	default:
-		// Toggle node filter with "n"
 		if msg.String() == "n" {
 			m.cycleNodeFilter()
 		}
 	}
 	return m, nil
+}
+
+func (m *Model) adjustScroll() {
+	visible := m.visibleRows()
+	if m.cursor < m.scrollOff {
+		m.scrollOff = m.cursor
+	}
+	if m.cursor >= m.scrollOff+visible {
+		m.scrollOff = m.cursor - visible + 1
+	}
+}
+
+func (m Model) visibleRows() int {
+	v := m.height - 3 // header + column header + possible filter
+	if v < 1 {
+		return 1
+	}
+	return v
 }
 
 func (m Model) updateFilter(msg tea.KeyMsg) (Model, tea.Cmd) {
@@ -296,15 +331,17 @@ func (m Model) viewList() string {
 		return strings.Join(lines, "\n")
 	}
 
-	visibleRows := m.height - len(lines) - 1
-	if visibleRows < 1 {
-		visibleRows = 1
+	visible := m.height - len(lines) - 1
+	if visible < 1 {
+		visible = 1
+	}
+	endIdx := m.scrollOff + visible
+	if endIdx > len(m.filtered) {
+		endIdx = len(m.filtered)
 	}
 
-	for i, c := range m.filtered {
-		if i >= visibleRows {
-			break
-		}
+	for i := m.scrollOff; i < endIdx; i++ {
+		c := m.filtered[i]
 		isCursor := i == m.cursor
 
 		cursor := " "
