@@ -247,8 +247,9 @@ func (m Model) updateDetail(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.detailView = false
 	case key.Matches(msg, shared.Keys.ResetNode):
 		if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
+			n := m.filtered[m.cursor]
 			return m, func() tea.Msg {
-				return shared.NodeResetRequestMsg{Node: m.filtered[m.cursor].Hostname}
+				return shared.NodeResetRequestMsg{Node: n.Hostname, IsControlPlane: n.IsControlPlane()}
 			}
 		}
 	}

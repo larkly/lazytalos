@@ -184,12 +184,12 @@ func New(opts Options) Model {
 	// Auto-select if --context flag is set, or exactly one context and not forced to pick
 	if opts.Context != "" && !opts.PickContext {
 		m.autoSelect = opts.Context
-		m.contextPicker = contextpicker.New(contexts, err)
+		m.contextPicker = contextpicker.New(contexts, m.contextName, err)
 	} else if err == nil && len(contexts) == 1 && !opts.PickContext {
 		m.autoSelect = contexts[0]
-		m.contextPicker = contextpicker.New(contexts, nil)
+		m.contextPicker = contextpicker.New(contexts, m.contextName, nil)
 	} else {
-		m.contextPicker = contextpicker.New(contexts, err)
+		m.contextPicker = contextpicker.New(contexts, m.contextName, err)
 	}
 
 	m.statusBar.CurrentView = "contextpicker"
@@ -501,7 +501,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case shared.NodeResetRequestMsg:
-		m.resetModal = modal.NewResetModal(msg.Node, m.width, m.height)
+		m.resetModal = modal.NewResetModal(msg.Node, msg.IsControlPlane, m.width, m.height)
 		m.activeModal = modalReset
 		return m, nil
 

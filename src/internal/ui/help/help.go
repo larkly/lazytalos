@@ -165,7 +165,7 @@ var allSections = []helpSection{
 		{"1–8", "Switch to tab by number"},
 		{"← / →", "Previous / next tab"},
 		{"Ctrl+R", "Force refresh"},
-		{"↑ / ↓", "Navigate list"},
+		{"↑/k  ↓/j", "Navigate list"},
 		{"PgUp / PgDn", "Scroll page"},
 		{"Enter", "Detail view / confirm"},
 		{"Esc", "Back / close"},

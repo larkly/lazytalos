@@ -20,12 +20,13 @@ const (
 
 // ResetModal is the two-step confirmation modal for node reset.
 type ResetModal struct {
-	node       string
-	step       ResetStep
-	typedInput string
-	modeIdx    int // 0=graceful (default), 1=no-graceful
-	width      int
-	height     int
+	node           string
+	isControlPlane bool
+	step           ResetStep
+	typedInput     string
+	modeIdx        int // 0=graceful (default), 1=no-graceful
+	width          int
+	height         int
 }
 
 // ResetConfirmedMsg is emitted when both steps complete.
@@ -38,8 +39,8 @@ type ResetConfirmedMsg struct {
 type ResetCancelledMsg struct{}
 
 // NewResetModal creates a new ResetModal for the given node.
-func NewResetModal(node string, width, height int) ResetModal {
-	return ResetModal{node: node, width: width, height: height}
+func NewResetModal(node string, isCP bool, width, height int) ResetModal {
+	return ResetModal{node: node, isControlPlane: isCP, width: width, height: height}
 }
 
 // IsActive always returns true (the modal is active when instantiated).
@@ -106,6 +107,9 @@ func (m ResetModal) View() string {
 
 	title := shared.StyleModalTitle.Render("Reset Node")
 	warning := shared.StyleError.Render("WARNING: This will reset the node and erase all data!")
+	if m.isControlPlane {
+		warning += "\n" + shared.StyleError.Render("DANGER: This is a control plane node! Resetting may cause etcd quorum loss and destroy the cluster.")
+	}
 
 	switch m.step {
 	case ResetStepTyped:

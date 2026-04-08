@@ -43,6 +43,7 @@ type eventRow struct {
 	Node    string
 	Actor   string
 	Message string
+	Time    time.Time
 }
 
 // Internal messages for data loading.
@@ -406,6 +407,7 @@ func (m Model) fetchEvents() tea.Cmd {
 				Node:    node,
 				Actor:   ev.ActorID,
 				Message: message,
+				Time:    time.Now(),
 			})
 		}
 
@@ -802,8 +804,9 @@ func (m Model) renderEvents(maxLines int) string {
 	for i := startIdx; i < len(m.events) && i < startIdx+visible; i++ {
 		ev := m.events[i]
 		nodeColor := nodeColorFor(ev.Node)
+		ts := shared.StyleMuted.Render(ev.Time.Format("15:04:05"))
 		nodeTag := lipgloss.NewStyle().Foreground(nodeColor).Render(fmt.Sprintf("[%-6s]", shared.Truncate(ev.Node, 6)))
-		line := fmt.Sprintf("%s %s", nodeTag, ev.Message)
+		line := fmt.Sprintf("%s %s %s", ts, nodeTag, ev.Message)
 		lines = append(lines, line)
 	}
 

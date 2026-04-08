@@ -120,7 +120,10 @@ type UpgradePausedMsg struct{}
 type UpgradeAbortedMsg struct{}
 
 // NodeResetRequestMsg is sent to initiate a node reset.
-type NodeResetRequestMsg struct{ Node string }
+type NodeResetRequestMsg struct {
+	Node           string
+	IsControlPlane bool
+}
 
 // UpdateAvailableMsg is sent when a newer lazytalos release is detected.
 type UpdateAvailableMsg struct {

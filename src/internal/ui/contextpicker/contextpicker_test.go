@@ -10,7 +10,7 @@ import (
 
 func TestNew(t *testing.T) {
 	contexts := []string{"alpha", "beta", "gamma"}
-	m := New(contexts, nil)
+	m := New(contexts, "", nil)
 
 	if len(m.contexts) != 3 {
 		t.Errorf("contexts len = %d, want 3", len(m.contexts))
@@ -25,7 +25,7 @@ func TestNew(t *testing.T) {
 
 func TestNew_WithError(t *testing.T) {
 	e := errors.New("no talosconfig")
-	m := New(nil, e)
+	m := New(nil, "", e)
 
 	if m.err == nil {
 		t.Error("expected error to be stored")
@@ -36,7 +36,7 @@ func TestNew_WithError(t *testing.T) {
 }
 
 func TestCursorDown(t *testing.T) {
-	m := New([]string{"a", "b", "c"}, nil)
+	m := New([]string{"a", "b", "c"}, "", nil)
 
 	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
 	if m.cursor != 1 {
@@ -56,7 +56,7 @@ func TestCursorDown(t *testing.T) {
 }
 
 func TestCursorUp(t *testing.T) {
-	m := New([]string{"a", "b", "c"}, nil)
+	m := New([]string{"a", "b", "c"}, "", nil)
 
 	// Should not go below 0
 	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
@@ -73,7 +73,7 @@ func TestCursorUp(t *testing.T) {
 }
 
 func TestEnter_SelectsContext(t *testing.T) {
-	m := New([]string{"prod", "staging", "dev"}, nil)
+	m := New([]string{"prod", "staging", "dev"}, "", nil)
 
 	// Move to "staging" (index 1)
 	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
@@ -95,7 +95,7 @@ func TestEnter_SelectsContext(t *testing.T) {
 }
 
 func TestEnter_FirstItem(t *testing.T) {
-	m := New([]string{"only-one"}, nil)
+	m := New([]string{"only-one"}, "", nil)
 
 	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 
@@ -113,7 +113,7 @@ func TestEnter_FirstItem(t *testing.T) {
 }
 
 func TestEnter_EmptyContexts(t *testing.T) {
-	m := New([]string{}, nil)
+	m := New([]string{}, "", nil)
 
 	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	if cmd != nil {
@@ -122,7 +122,7 @@ func TestEnter_EmptyContexts(t *testing.T) {
 }
 
 func TestQuit(t *testing.T) {
-	m := New([]string{"a"}, nil)
+	m := New([]string{"a"}, "", nil)
 
 	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'q', Text: "q"}))
 	if cmd == nil {
@@ -131,7 +131,7 @@ func TestQuit(t *testing.T) {
 }
 
 func TestWindowSize(t *testing.T) {
-	m := New([]string{"a"}, nil)
+	m := New([]string{"a"}, "", nil)
 
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 50})
 

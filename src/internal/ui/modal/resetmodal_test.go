@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewResetModal(t *testing.T) {
-	m := NewResetModal("cp-1", 80, 24)
+	m := NewResetModal("cp-1", false, 80, 24)
 	if m.node != "cp-1" {
 		t.Errorf("expected node cp-1, got %q", m.node)
 	}
@@ -20,7 +20,7 @@ func TestNewResetModal(t *testing.T) {
 }
 
 func TestTypedInput_WrongHostname_NoAdvance(t *testing.T) {
-	m := NewResetModal("cp-1", 80, 24)
+	m := NewResetModal("cp-1", false, 80, 24)
 
 	// Type wrong hostname
 	for _, c := range "wrong" {
@@ -35,7 +35,7 @@ func TestTypedInput_WrongHostname_NoAdvance(t *testing.T) {
 }
 
 func TestTypedInput_CorrectHostname_Advances(t *testing.T) {
-	m := NewResetModal("cp-1", 80, 24)
+	m := NewResetModal("cp-1", false, 80, 24)
 
 	// Type correct hostname
 	for _, c := range "cp-1" {
@@ -50,7 +50,7 @@ func TestTypedInput_CorrectHostname_Advances(t *testing.T) {
 }
 
 func TestResetConfirmedMsg(t *testing.T) {
-	m := NewResetModal("cp-1", 80, 24)
+	m := NewResetModal("cp-1", false, 80, 24)
 	m.step = ResetStepMode // jump to step 2 directly (graceful=true, modeIdx=0)
 
 	_, cmd := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
@@ -71,7 +71,7 @@ func TestResetConfirmedMsg(t *testing.T) {
 }
 
 func TestResetCancelledMsg(t *testing.T) {
-	m := NewResetModal("cp-1", 80, 24)
+	m := NewResetModal("cp-1", false, 80, 24)
 
 	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if cmd == nil {

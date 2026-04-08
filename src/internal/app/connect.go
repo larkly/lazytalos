@@ -33,7 +33,7 @@ func (m Model) switchToContextPicker() (Model, tea.Cmd) {
 	} else {
 		shared.Debugf("[app] switchToContextPicker: found %d contexts", len(contexts))
 	}
-	m.contextPicker = contextpicker.New(contexts, err)
+	m.contextPicker = contextpicker.New(contexts, m.contextName, err)
 	m.contextPicker.SetSize(m.width, m.height)
 	m.view = viewContextPicker
 	m.statusBar.CurrentView = "contextpicker"

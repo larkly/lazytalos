@@ -11,18 +11,29 @@ import (
 
 // Model is the context picker overlay.
 type Model struct {
-	contexts []string
-	cursor   int
-	err      error
-	width    int
-	height   int
+	contexts       []string
+	currentContext string
+	cursor         int
+	err            error
+	width          int
+	height         int
 }
 
 // New creates a context picker with the given context names.
-func New(contexts []string, err error) Model {
+func New(contexts []string, currentContext string, err error) Model {
+	// Pre-select cursor to current context
+	cursor := 0
+	for i, c := range contexts {
+		if c == currentContext {
+			cursor = i
+			break
+		}
+	}
 	return Model{
-		contexts: contexts,
-		err:      err,
+		contexts:       contexts,
+		currentContext: currentContext,
+		cursor:         cursor,
+		err:            err,
 	}
 }
 
@@ -94,10 +105,16 @@ func (m Model) View() string {
 
 	items := ""
 	for i, name := range m.contexts {
+		label := name
+		if name == m.currentContext {
+			label = name + " (current)"
+		}
 		if i == m.cursor {
-			items += shared.StyleSelected.Render(fmt.Sprintf("  %s  ", name)) + "\n"
+			items += shared.StyleSelected.Render(fmt.Sprintf("  %s  ", label)) + "\n"
+		} else if name == m.currentContext {
+			items += lipgloss.NewStyle().Foreground(shared.ColorPrimary).Render(fmt.Sprintf("  %s  ", label)) + "\n"
 		} else {
-			items += shared.StyleMuted.Render(fmt.Sprintf("  %s  ", name)) + "\n"
+			items += shared.StyleMuted.Render(fmt.Sprintf("  %s  ", label)) + "\n"
 		}
 	}
 
