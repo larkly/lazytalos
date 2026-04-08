@@ -32,39 +32,37 @@ func ListContainers(ctx context.Context, c *talos.Client) ([]Container, error) {
 	}
 
 	targets := allNodeAddresses(ctx, c)
+	nodeCtx := talosclient.WithNodes(ctx, targets...)
 	var containers []Container
-	for _, addr := range targets {
-		nodeCtx := talosclient.WithNodes(ctx, addr)
-		for _, ns := range []string{"system", "k8s.io"} {
-			resp, err := c.C.Containers(nodeCtx, ns, common.ContainerDriver_CONTAINERD)
-			if err != nil {
+	for _, ns := range []string{"system", "k8s.io"} {
+		resp, err := c.C.Containers(nodeCtx, ns, common.ContainerDriver_CONTAINERD)
+		if err != nil {
+			continue
+		}
+		for _, nodeMsg := range resp.GetMessages() {
+			if nodeMsg.GetMetadata() == nil {
 				continue
 			}
-			for _, nodeMsg := range resp.GetMessages() {
-				if nodeMsg.GetMetadata() == nil {
-					continue
+			hostname := nodeMsg.GetMetadata().GetHostname()
+			if hostname == "" {
+				continue
+			}
+			for _, ci := range nodeMsg.GetContainers() {
+				name := ci.GetName()
+				if name == "" {
+					name = ci.GetId()
 				}
-				hostname := nodeMsg.GetMetadata().GetHostname()
-				if hostname == "" {
-					hostname = addr
-				}
-				for _, ci := range nodeMsg.GetContainers() {
-					name := ci.GetName()
-					if name == "" {
-						name = ci.GetId()
-					}
-					fullImage := ci.GetImage()
-					containers = append(containers, Container{
-						NodeHostname: hostname,
-						Namespace:    ns,
-						Name:         name,
-						Image:        shortImage(fullImage),
-						FullImage:    fullImage,
-						State:        ci.GetStatus(),
-						PID:          ci.GetPid(),
-						Status:       ci.GetStatus(),
-					})
-				}
+				fullImage := ci.GetImage()
+				containers = append(containers, Container{
+					NodeHostname: hostname,
+					Namespace:    ns,
+					Name:         name,
+					Image:        shortImage(fullImage),
+					FullImage:    fullImage,
+					State:        ci.GetStatus(),
+					PID:          ci.GetPid(),
+					Status:       ci.GetStatus(),
+				})
 			}
 		}
 	}

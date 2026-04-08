@@ -428,59 +428,58 @@ func (m Model) fetchServices() tea.Cmd {
 		defer cancel()
 
 		targets := allNodeAddresses(ctx, client)
+		nodeCtx := talosclient.WithNodes(ctx, targets...)
+		resp, err := client.C.ServiceList(nodeCtx)
+		if err != nil {
+			return servicesLoadedMsg{err: err}
+		}
+
 		var rows []ServiceListRow
-		for _, addr := range targets {
-			nodeCtx := talosclient.WithNodes(ctx, addr)
-			resp, err := client.C.ServiceList(nodeCtx)
-			if err != nil {
+		for _, nodeMsg := range resp.GetMessages() {
+			if nodeMsg.GetMetadata() == nil {
 				continue
 			}
-			for _, nodeMsg := range resp.GetMessages() {
-				if nodeMsg.GetMetadata() == nil {
-					continue
-				}
-				hostname := nodeMsg.GetMetadata().GetHostname()
-				if hostname == "" {
-					hostname = addr
-				}
-				for _, svc := range nodeMsg.GetServices() {
-					health := "?"
-					lastChange := ""
-					lastEvent := ""
+			hostname := nodeMsg.GetMetadata().GetHostname()
+			if hostname == "" {
+				continue
+			}
+			for _, svc := range nodeMsg.GetServices() {
+				health := "?"
+				lastChange := ""
+				lastEvent := ""
 
-					if svc.GetHealth() != nil {
-						if svc.GetHealth().GetUnknown() {
-							health = "?"
-						} else if svc.GetHealth().GetHealthy() {
-							health = "OK"
-						} else {
-							health = "Failed"
-						}
-						if svc.GetHealth().GetLastChange() != nil {
-							lastChange = svc.GetHealth().GetLastChange().AsTime().Format("15:04:05")
-						}
-						if svc.GetHealth().GetLastMessage() != "" {
-							lastEvent = svc.GetHealth().GetLastMessage()
-						}
+				if svc.GetHealth() != nil {
+					if svc.GetHealth().GetUnknown() {
+						health = "?"
+					} else if svc.GetHealth().GetHealthy() {
+						health = "OK"
+					} else {
+						health = "Failed"
 					}
-
-					if lastEvent == "" && svc.GetEvents() != nil {
-						evts := svc.GetEvents().GetEvents()
-						if len(evts) > 0 {
-							last := evts[len(evts)-1]
-							lastEvent = last.GetMsg()
-						}
+					if svc.GetHealth().GetLastChange() != nil {
+						lastChange = svc.GetHealth().GetLastChange().AsTime().Format("15:04:05")
 					}
-
-					rows = append(rows, ServiceListRow{
-						Node:       hostname,
-						ServiceID:  svc.GetId(),
-						State:      svc.GetState(),
-						Health:     health,
-						LastChange: lastChange,
-						LastEvent:  lastEvent,
-					})
+					if svc.GetHealth().GetLastMessage() != "" {
+						lastEvent = svc.GetHealth().GetLastMessage()
+					}
 				}
+
+				if lastEvent == "" && svc.GetEvents() != nil {
+					evts := svc.GetEvents().GetEvents()
+					if len(evts) > 0 {
+						last := evts[len(evts)-1]
+						lastEvent = last.GetMsg()
+					}
+				}
+
+				rows = append(rows, ServiceListRow{
+					Node:       hostname,
+					ServiceID:  svc.GetId(),
+					State:      svc.GetState(),
+					Health:     health,
+					LastChange: lastChange,
+					LastEvent:  lastEvent,
+				})
 			}
 		}
 

@@ -304,45 +304,44 @@ func (m Model) fetchServices() tea.Cmd {
 		if client == nil || client.C == nil {
 			return servicesLoadedMsg{servicesByNode: make(map[string][]serviceRow)}
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
 		targets := allNodeAddresses(ctx, client)
+		nodeCtx := talosclient.WithNodes(ctx, targets...)
+		resp, err := client.C.ServiceList(nodeCtx)
+		if err != nil {
+			return servicesLoadedMsg{err: err}
+		}
+
 		byNode := make(map[string][]serviceRow)
-		for _, addr := range targets {
-			nodeCtx := talosclient.WithNodes(ctx, addr)
-			resp, err := client.C.ServiceList(nodeCtx)
-			if err != nil {
+		for _, nodeMsg := range resp.GetMessages() {
+			if nodeMsg.GetMetadata() == nil {
 				continue
 			}
-			for _, nodeMsg := range resp.GetMessages() {
-				if nodeMsg.GetMetadata() == nil {
-					continue
-				}
-				hostname := nodeMsg.GetMetadata().GetHostname()
-				if hostname == "" {
-					hostname = addr
-				}
-				var svcs []serviceRow
-				for _, svc := range nodeMsg.GetServices() {
-					health := "?"
-					if svc.GetHealth() != nil {
-						if svc.GetHealth().GetUnknown() {
-							health = "?"
-						} else if svc.GetHealth().GetHealthy() {
-							health = "OK"
-						} else {
-							health = "Failed"
-						}
-					}
-					svcs = append(svcs, serviceRow{
-						ServiceID: svc.GetId(),
-						State:     svc.GetState(),
-						Health:    health,
-					})
-				}
-				byNode[hostname] = svcs
+			hostname := nodeMsg.GetMetadata().GetHostname()
+			if hostname == "" {
+				continue
 			}
+			var svcs []serviceRow
+			for _, svc := range nodeMsg.GetServices() {
+				health := "?"
+				if svc.GetHealth() != nil {
+					if svc.GetHealth().GetUnknown() {
+						health = "?"
+					} else if svc.GetHealth().GetHealthy() {
+						health = "OK"
+					} else {
+						health = "Failed"
+					}
+				}
+				svcs = append(svcs, serviceRow{
+					ServiceID: svc.GetId(),
+					State:     svc.GetState(),
+					Health:    health,
+				})
+			}
+			byNode[hostname] = svcs
 		}
 		return servicesLoadedMsg{servicesByNode: byNode}
 	}
@@ -354,29 +353,28 @@ func (m Model) fetchMemory() tea.Cmd {
 		if client == nil || client.C == nil {
 			return memoryLoadedMsg{memoryByNode: make(map[string]memStats)}
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
 		targets := allNodeAddresses(ctx, client)
+		nodeCtx := talosclient.WithNodes(ctx, targets...)
+		resp, err := client.C.Memory(nodeCtx)
+		if err != nil {
+			return memoryLoadedMsg{err: err}
+		}
+
 		byNode := make(map[string]memStats)
-		for _, addr := range targets {
-			nodeCtx := talosclient.WithNodes(ctx, addr)
-			resp, err := client.C.Memory(nodeCtx)
-			if err != nil {
+		for _, nodeMsg := range resp.GetMessages() {
+			if nodeMsg.GetMetadata() == nil || nodeMsg.GetMeminfo() == nil {
 				continue
 			}
-			for _, nodeMsg := range resp.GetMessages() {
-				if nodeMsg.GetMetadata() == nil || nodeMsg.GetMeminfo() == nil {
-					continue
-				}
-				hostname := nodeMsg.GetMetadata().GetHostname()
-				if hostname == "" {
-					hostname = addr
-				}
-				byNode[hostname] = memStats{
-					TotalKB:     nodeMsg.GetMeminfo().GetMemtotal(),
-					AvailableKB: nodeMsg.GetMeminfo().GetMemavailable(),
-				}
+			hostname := nodeMsg.GetMetadata().GetHostname()
+			if hostname == "" {
+				continue
+			}
+			byNode[hostname] = memStats{
+				TotalKB:     nodeMsg.GetMeminfo().GetMemtotal(),
+				AvailableKB: nodeMsg.GetMeminfo().GetMemavailable(),
 			}
 		}
 		return memoryLoadedMsg{memoryByNode: byNode}
