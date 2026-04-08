@@ -16,7 +16,12 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) viewContent() string {
-	// Config editor overlay has highest priority.
+	// Upgrade wizard overlay has highest priority.
+	if m.showingUpgrade {
+		return m.upgradeWizard.View()
+	}
+
+	// Config editor overlay has second highest priority.
 	if m.editingConfig {
 		return m.configEditor.View()
 	}

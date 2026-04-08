@@ -12,6 +12,7 @@ import (
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
 	"github.com/larkly/lazytalos/internal/update"
+	"github.com/larkly/lazytalos/internal/cluster"
 	"github.com/larkly/lazytalos/internal/ui/configeditor"
 	"github.com/larkly/lazytalos/internal/ui/containers"
 	"github.com/larkly/lazytalos/internal/ui/contextpicker"
@@ -24,6 +25,7 @@ import (
 	"github.com/larkly/lazytalos/internal/ui/network"
 	"github.com/larkly/lazytalos/internal/ui/nodelist"
 	"github.com/larkly/lazytalos/internal/ui/servicelist"
+	upgradeui "github.com/larkly/lazytalos/internal/ui/upgrade"
 	"github.com/larkly/lazytalos/internal/ui/statusbar"
 	"github.com/larkly/lazytalos/internal/ui/storage"
 )
@@ -90,8 +92,12 @@ type Model struct {
 	configView configview.Model
 
 	// Config editor overlay
-	configEditor configeditor.Model
+	configEditor  configeditor.Model
 	editingConfig bool
+
+	// Upgrade wizard overlay
+	upgradeWizard  upgradeui.Model
+	showingUpgrade bool
 
 	// Selection (for bulk node ops)
 	selectedNodes map[string]bool
@@ -246,6 +252,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var ceCmd tea.Cmd
 			m.configEditor, ceCmd = m.configEditor.Update(msg)
 			return m, ceCmd
+		}
+	}
+
+	// Upgrade wizard overlay: route all messages to it while active.
+	if m.showingUpgrade {
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			m.width = msg.Width
+			m.height = msg.Height
+			m.statusBar.Width = m.width
+			m.upgradeWizard.SetSize(m.width, m.contentHeight())
+			return m, nil
+		case upgradeui.ClosedMsg:
+			m.showingUpgrade = false
+			if msg.Completed {
+				m.statusBar.Hint = "Cluster upgrade completed"
+			}
+			return m, nil
+		default:
+			var cmd tea.Cmd
+			m.upgradeWizard, cmd = m.upgradeWizard.Update(msg)
+			return m, cmd
 		}
 	}
 
@@ -441,6 +469,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case configFetchedMsg:
 		m.configEditor = configeditor.New(m.client, msg.node, msg.yaml, msg.width, msg.height)
 		m.editingConfig = true
+		return m, nil
+
+	case shared.UpgradeRequestMsg:
+		// Collect NodeInfo for the requested hostnames from the node list.
+		allNodes := m.nodeList.AllNodes()
+		requested := make(map[string]bool, len(msg.Nodes))
+		for _, h := range msg.Nodes {
+			requested[h] = true
+		}
+		var upgradeNodes []cluster.NodeInfo
+		for _, n := range allNodes {
+			if requested[n.Hostname] {
+				upgradeNodes = append(upgradeNodes, n)
+			}
+		}
+		if len(upgradeNodes) == 0 {
+			return m, nil
+		}
+		m.upgradeWizard = upgradeui.New(m.client, m.contextName, upgradeNodes, m.width, m.contentHeight())
+		m.showingUpgrade = true
 		return m, nil
 
 	case shared.EtcdMemberRemoveRequestMsg:

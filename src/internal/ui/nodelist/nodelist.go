@@ -155,6 +155,24 @@ func (m Model) updateList(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, m.emitNodeAction("reboot")
 	case key.Matches(msg, shared.Keys.Shutdown):
 		return m, m.emitNodeAction("shutdown")
+	case key.Matches(msg, shared.Keys.UpgradeCluster):
+		var hostnames []string
+		selected := m.SelectedNodes()
+		if len(m.selected) == 0 && len(m.nodes) > 0 {
+			// no selection → use all nodes
+			for _, n := range m.nodes {
+				hostnames = append(hostnames, n.Hostname)
+			}
+		} else {
+			for _, n := range selected {
+				hostnames = append(hostnames, n.Hostname)
+			}
+		}
+		if len(hostnames) > 0 {
+			return m, func() tea.Msg {
+				return shared.UpgradeRequestMsg{Nodes: hostnames}
+			}
+		}
 	case key.Matches(msg, shared.Keys.Back):
 		if m.filter != "" {
 			m.filter = ""
@@ -438,7 +456,7 @@ func (m Model) Hints() string {
 		return "type to filter  enter:apply  esc:cancel"
 	}
 	sortLabel := [sortFieldMax]string{"hostname", "type", "health"}
-	return fmt.Sprintf("space:select  A:all  enter:detail  /:filter  s:sort(%s)  y:copy IP  Y:copy endpoint  ctrl+o:reboot  ctrl+d:shutdown", sortLabel[m.sortBy])
+	return fmt.Sprintf("space:select  A:all  enter:detail  /:filter  s:sort(%s)  y:copy IP  Y:copy endpoint  ctrl+o:reboot  ctrl+d:shutdown  ctrl+u:upgrade", sortLabel[m.sortBy])
 }
 
 // ForceRefresh triggers an immediate data refresh.
@@ -461,6 +479,11 @@ func (m Model) SelectedNodes() []cluster.NodeInfo {
 		return []cluster.NodeInfo{m.filtered[m.cursor]}
 	}
 	return nil
+}
+
+// AllNodes returns the full list of loaded nodes.
+func (m Model) AllNodes() []cluster.NodeInfo {
+	return m.nodes
 }
 
 func (m Model) emitNodeAction(action string) tea.Cmd {
