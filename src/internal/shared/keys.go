@@ -142,12 +142,12 @@ var Keys = KeyMap{
 		key.WithHelp("8", "etcd"),
 	),
 	SubTabPrev: key.NewBinding(
-		key.WithKeys("["),
-		key.WithHelp("[", "previous sub-tab"),
+		key.WithKeys("[", "<"),
+		key.WithHelp("[/<", "previous sub-tab"),
 	),
 	SubTabNext: key.NewBinding(
-		key.WithKeys("]"),
-		key.WithHelp("]", "next sub-tab"),
+		key.WithKeys("]", ">"),
+		key.WithHelp("]/>", "next sub-tab"),
 	),
 	Select: key.NewBinding(
 		key.WithKeys("space"),
