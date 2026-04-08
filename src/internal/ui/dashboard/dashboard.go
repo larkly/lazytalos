@@ -182,74 +182,55 @@ func (m Model) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(shared.ColorSecondary)
 
-	halfW := m.width/2 - 1
-	if halfW < 20 {
-		halfW = 20
-	}
-	fullW := m.width - 2
+	// Each bordered panel adds 2 cols (left+right border) and 2 rows (top+bottom).
+	// Two side-by-side panels share the width evenly.
+	halfW := m.width / 2
+	fullW := m.width
 
 	// --- Top row: Cluster Status (left) + Node Health (right) ---
-	nodeRows := len(m.nodes)
-	if nodeRows < 1 {
-		nodeRows = 1
+	// Height: enough for all nodes + header, capped at 40% of terminal
+	topInnerH := max(len(m.nodes)+2, 8) // at least 8 for status panel content
+	if topInnerH > m.height*40/100 {
+		topInnerH = m.height * 40 / 100
 	}
-	topInnerH := nodeRows + 1 // header line + one line per node
-	if topInnerH < 3 {
-		topInnerH = 3
-	}
-	if topInnerH > m.height/3 {
-		topInnerH = m.height / 3
+	if topInnerH < 4 {
+		topInnerH = 4
 	}
 
 	statusContent := m.renderClusterStatus(topInnerH)
 	nodeContent := m.renderNodeHealth(topInnerH)
 
-	statusPanel := panelBorder.
-		Width(halfW - 2).
-		Height(topInnerH).
-		Render(statusContent)
-	nodePanel := panelBorder.
-		Width(halfW - 2).
-		Height(topInnerH).
-		Render(nodeContent)
+	statusPanel := panelBorder.Width(halfW - 2).Height(topInnerH).Render(statusContent)
+	nodePanel := panelBorder.Width(halfW - 2).Height(topInnerH).Render(nodeContent)
 
 	topRow := lipgloss.JoinHorizontal(lipgloss.Top, statusPanel, nodePanel)
 
 	// --- Middle row: Service Matrix (full width) ---
-	svcRows := len(allServices) + 1
-	if svcRows > m.height/3 {
-		svcRows = m.height / 3
+	svcInnerH := len(allServices) + 2 // header + column header + services
+	maxSvcH := m.height * 35 / 100
+	if svcInnerH > maxSvcH {
+		svcInnerH = maxSvcH
 	}
-	if svcRows < 3 {
-		svcRows = 3
+	if svcInnerH < 4 {
+		svcInnerH = 4
 	}
 
-	svcContent := m.renderServiceMatrix(svcRows)
-	svcPanel := panelBorder.
-		Width(fullW - 2).
-		Height(svcRows).
-		Render(svcContent)
+	svcContent := m.renderServiceMatrix(svcInnerH)
+	svcPanel := panelBorder.Width(fullW - 2).Height(svcInnerH).Render(svcContent)
 
 	// --- Bottom row: Diagnostics (left) + Events (right) ---
 	topRowH := lipgloss.Height(topRow)
 	svcPanelH := lipgloss.Height(svcPanel)
-	bottomH := m.height - topRowH - svcPanelH
-	if bottomH < 5 {
-		bottomH = 5
+	bottomInnerH := m.height - topRowH - svcPanelH - 2 // -2 for bottom panel border
+	if bottomInnerH < 3 {
+		bottomInnerH = 3
 	}
-	bottomInnerH := bottomH - 2 // border
 
 	diagContent := m.renderDiagnostics(bottomInnerH)
 	eventContent := m.renderEvents(bottomInnerH)
 
-	diagPanel := panelBorder.
-		Width(halfW - 2).
-		Height(bottomInnerH).
-		Render(diagContent)
-	eventPanel := panelBorder.
-		Width(halfW - 2).
-		Height(bottomInnerH).
-		Render(eventContent)
+	diagPanel := panelBorder.Width(halfW - 2).Height(bottomInnerH).Render(diagContent)
+	eventPanel := panelBorder.Width(halfW - 2).Height(bottomInnerH).Render(eventContent)
 
 	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, diagPanel, eventPanel)
 

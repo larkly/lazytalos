@@ -11,6 +11,8 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbletea/v2"
+	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
+
 	"github.com/larkly/lazytalos/internal/cluster"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
@@ -524,11 +526,19 @@ func (m Model) fetchServicesForDetail() tea.Cmd {
 	if client == nil || client.C == nil || m.cursor >= len(m.filtered) {
 		return nil
 	}
+	// Target the specific node for this detail view
+	node := m.filtered[m.cursor]
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		resp, err := client.C.ServiceList(ctx)
+		// Use the node's first address for WithNodes targeting
+		target := node.Hostname
+		if len(node.Addresses) > 0 {
+			target = node.Addresses[0]
+		}
+		nodeCtx := talosclient.WithNodes(ctx, target)
+		resp, err := client.C.ServiceList(nodeCtx)
 		if err != nil {
 			return servicesLoadedMsg{err: err}
 		}
@@ -538,7 +548,7 @@ func (m Model) fetchServicesForDetail() tea.Cmd {
 			if nodeMsg.GetMetadata() == nil {
 				continue
 			}
-			hostname := nodeMsg.GetMetadata().GetHostname()
+			// Key by the node's hostname so the lookup matches
 			for _, svc := range nodeMsg.GetServices() {
 				health := "?"
 				if svc.GetHealth() != nil {
@@ -550,7 +560,7 @@ func (m Model) fetchServicesForDetail() tea.Cmd {
 						health = "Failed"
 					}
 				}
-				byNode[hostname] = append(byNode[hostname], serviceInfo{
+				byNode[node.Hostname] = append(byNode[node.Hostname], serviceInfo{
 					ID:     svc.GetId(),
 					State:  svc.GetState(),
 					Health: health,

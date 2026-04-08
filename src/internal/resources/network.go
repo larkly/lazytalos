@@ -131,12 +131,11 @@ func ListHostnames(ctx context.Context, c *talos.Client) ([]HostnameStatus, erro
 	return results, err
 }
 
-// ListDNSUpstreams returns all DNSUpstream resources across all nodes.
-// Returns an empty slice if the resource type is unavailable.
+// ListDNSUpstreams returns DNS servers from ResolverStatus resources across all nodes.
 func ListDNSUpstreams(ctx context.Context, c *talos.Client) ([]DNSUpstream, error) {
 	md := resource.NewMetadata(
 		networkres.NamespaceName,
-		networkres.DNSUpstreamType,
+		networkres.ResolverStatusType,
 		"",
 		resource.VersionUndefined,
 	)
@@ -144,27 +143,23 @@ func ListDNSUpstreams(ctx context.Context, c *talos.Client) ([]DNSUpstream, erro
 	var results []DNSUpstream
 
 	err := listPerNode(ctx, c, md, func(nodeAddr string, item resource.Resource) {
-		r, ok := item.(*networkres.DNSUpstream)
+		r, ok := item.(*networkres.ResolverStatus)
 		if !ok {
-			shared.Debugf("[resources] unexpected DNSUpstream type: %T", item)
+			shared.Debugf("[resources] unexpected ResolverStatus type: %T", item)
 			return
 		}
 
 		spec := r.TypedSpec()
-		addr := ""
-		if spec.Value.Conn != nil {
-			addr = spec.Value.Conn.Addr()
+		for _, addr := range spec.DNSServers {
+			results = append(results, DNSUpstream{
+				NodeHostname: nodeAddr,
+				Address:      addr.String(),
+			})
 		}
-
-		results = append(results, DNSUpstream{
-			NodeHostname: nodeAddr,
-			Address:      addr,
-		})
 	})
 
-	// DNSUpstream may not be populated; treat errors as graceful empty.
 	if err != nil {
-		shared.Debugf("[resources] DNSUpstream list error (possibly unavailable): %v", err)
+		shared.Debugf("[resources] ResolverStatus list error: %v", err)
 		return []DNSUpstream{}, nil
 	}
 

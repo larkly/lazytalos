@@ -83,8 +83,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if msg.err != nil {
 			m.err = msg.err
 		} else {
+			prevCursor := m.cursor
 			m.containers = msg.containers
 			m.applyFilter()
+			// Preserve cursor position across refreshes
+			if prevCursor < len(m.filtered) {
+				m.cursor = prevCursor
+			}
 		}
 		m.loading = false
 	}
