@@ -8,6 +8,7 @@ import (
 	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
 	"github.com/siderolabs/talos/pkg/machinery/api/common"
 
+	"github.com/larkly/lazytalos/internal/cluster"
 	"github.com/larkly/lazytalos/internal/talos"
 )
 
@@ -30,9 +31,10 @@ func ListContainers(ctx context.Context, c *talos.Client) ([]Container, error) {
 		return nil, nil
 	}
 
+	targets := allNodeAddresses(ctx, c)
 	var containers []Container
-	for _, endpoint := range c.Endpoints {
-		nodeCtx := talosclient.WithNodes(ctx, endpoint)
+	for _, addr := range targets {
+		nodeCtx := talosclient.WithNodes(ctx, addr)
 		for _, ns := range []string{"system", "k8s.io"} {
 			resp, err := c.C.Containers(nodeCtx, ns, common.ContainerDriver_CONTAINERD)
 			if err != nil {
@@ -44,7 +46,7 @@ func ListContainers(ctx context.Context, c *talos.Client) ([]Container, error) {
 				}
 				hostname := nodeMsg.GetMetadata().GetHostname()
 				if hostname == "" {
-					hostname = endpoint
+					hostname = addr
 				}
 				for _, ci := range nodeMsg.GetContainers() {
 					name := ci.GetName()
@@ -67,6 +69,22 @@ func ListContainers(ctx context.Context, c *talos.Client) ([]Container, error) {
 		}
 	}
 	return containers, nil
+}
+
+func allNodeAddresses(ctx context.Context, c *talos.Client) []string {
+	members, err := cluster.GetMembers(ctx, c)
+	if err == nil && len(members) > 0 {
+		var addrs []string
+		for _, m := range members {
+			if len(m.Addresses) > 0 {
+				addrs = append(addrs, m.Addresses[0])
+			}
+		}
+		if len(addrs) > 0 {
+			return addrs
+		}
+	}
+	return c.Endpoints
 }
 
 // shortImage extracts the last path segment from a full image reference and

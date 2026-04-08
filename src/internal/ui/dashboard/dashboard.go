@@ -307,9 +307,10 @@ func (m Model) fetchServices() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
+		targets := allNodeAddresses(ctx, client)
 		byNode := make(map[string][]serviceRow)
-		for _, endpoint := range client.Endpoints {
-			nodeCtx := talosclient.WithNodes(ctx, endpoint)
+		for _, addr := range targets {
+			nodeCtx := talosclient.WithNodes(ctx, addr)
 			resp, err := client.C.ServiceList(nodeCtx)
 			if err != nil {
 				continue
@@ -320,7 +321,7 @@ func (m Model) fetchServices() tea.Cmd {
 				}
 				hostname := nodeMsg.GetMetadata().GetHostname()
 				if hostname == "" {
-					hostname = endpoint
+					hostname = addr
 				}
 				var svcs []serviceRow
 				for _, svc := range nodeMsg.GetServices() {
@@ -356,9 +357,10 @@ func (m Model) fetchMemory() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
+		targets := allNodeAddresses(ctx, client)
 		byNode := make(map[string]memStats)
-		for _, endpoint := range client.Endpoints {
-			nodeCtx := talosclient.WithNodes(ctx, endpoint)
+		for _, addr := range targets {
+			nodeCtx := talosclient.WithNodes(ctx, addr)
 			resp, err := client.C.Memory(nodeCtx)
 			if err != nil {
 				continue
@@ -369,7 +371,7 @@ func (m Model) fetchMemory() tea.Cmd {
 				}
 				hostname := nodeMsg.GetMetadata().GetHostname()
 				if hostname == "" {
-					hostname = endpoint
+					hostname = addr
 				}
 				byNode[hostname] = memStats{
 					TotalKB:     nodeMsg.GetMeminfo().GetMemtotal(),
@@ -484,6 +486,24 @@ func (m Model) fetchDiagnostics() tea.Cmd {
 		diags, err := resources.ListDiagnostics(ctx, client)
 		return diagnosticsLoadedMsg{diagnostics: diags, err: err}
 	}
+}
+
+// allNodeAddresses returns addresses for all cluster nodes by querying
+// cluster members. Falls back to client.Endpoints if discovery fails.
+func allNodeAddresses(ctx context.Context, client *talos.Client) []string {
+	members, err := cluster.GetMembers(ctx, client)
+	if err == nil && len(members) > 0 {
+		var addrs []string
+		for _, m := range members {
+			if len(m.Addresses) > 0 {
+				addrs = append(addrs, m.Addresses[0])
+			}
+		}
+		if len(addrs) > 0 {
+			return addrs
+		}
+	}
+	return client.Endpoints
 }
 
 // --- Rendering helpers ---

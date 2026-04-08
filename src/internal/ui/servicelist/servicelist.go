@@ -14,6 +14,7 @@ import (
 	"charm.land/bubbletea/v2"
 	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
 
+	"github.com/larkly/lazytalos/internal/cluster"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
 )
@@ -426,9 +427,10 @@ func (m Model) fetchServices() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
+		targets := allNodeAddresses(ctx, client)
 		var rows []ServiceListRow
-		for _, endpoint := range client.Endpoints {
-			nodeCtx := talosclient.WithNodes(ctx, endpoint)
+		for _, addr := range targets {
+			nodeCtx := talosclient.WithNodes(ctx, addr)
 			resp, err := client.C.ServiceList(nodeCtx)
 			if err != nil {
 				continue
@@ -439,7 +441,7 @@ func (m Model) fetchServices() tea.Cmd {
 				}
 				hostname := nodeMsg.GetMetadata().GetHostname()
 				if hostname == "" {
-					hostname = endpoint
+					hostname = addr
 				}
 				for _, svc := range nodeMsg.GetServices() {
 					health := "?"
@@ -507,6 +509,22 @@ func BuildRows(byNode map[string][]ServiceListRow) []ServiceListRow {
 		return rows[i].ServiceID < rows[j].ServiceID
 	})
 	return rows
+}
+
+func allNodeAddresses(ctx context.Context, client *talos.Client) []string {
+	members, err := cluster.GetMembers(ctx, client)
+	if err == nil && len(members) > 0 {
+		var addrs []string
+		for _, m := range members {
+			if len(m.Addresses) > 0 {
+				addrs = append(addrs, m.Addresses[0])
+			}
+		}
+		if len(addrs) > 0 {
+			return addrs
+		}
+	}
+	return client.Endpoints
 }
 
 func truncate(s string, maxLen int) string {
