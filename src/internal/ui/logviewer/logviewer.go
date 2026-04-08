@@ -52,6 +52,7 @@ type Model struct {
 
 	// Selector state (left pane)
 	nodes          []string
+	nodeAddrs      map[string]string // hostname -> API address for WithNodes
 	services       []string
 	activeNodes    map[string]bool
 	activeServices map[string]bool
@@ -82,6 +83,7 @@ func New(client *talos.Client, refreshInterval time.Duration) Model {
 		client:          client,
 		services:        svcs,
 		activeNodes:     make(map[string]bool),
+		nodeAddrs:       make(map[string]string),
 		activeServices:  make(map[string]bool),
 		streams:         make(map[StreamKey]activeStream),
 		maxLines:        MaxLines,
@@ -92,8 +94,23 @@ func New(client *talos.Client, refreshInterval time.Duration) Model {
 }
 
 // SetNodes sets the available node list (called by app when members are known).
+// Each node string is used as both display name and API target.
 func (m *Model) SetNodes(nodes []string) {
 	m.nodes = nodes
+}
+
+// SetNodesWithAddrs sets the node list with separate display hostnames and API addresses.
+func (m *Model) SetNodesWithAddrs(hostnames []string, addrs map[string]string) {
+	m.nodes = hostnames
+	m.nodeAddrs = addrs
+}
+
+// nodeTarget returns the API address to use with WithNodes for a given node name.
+func (m Model) nodeTarget(node string) string {
+	if addr, ok := m.nodeAddrs[node]; ok {
+		return addr
+	}
+	return node
 }
 
 // PreSelectContainer is a stub that will pre-select the given node and container
@@ -324,7 +341,7 @@ func (m *Model) startStream(node, svc string) tea.Cmd {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	nodeCtx := talosclient.WithNodes(ctx, node)
+	nodeCtx := talosclient.WithNodes(ctx, m.nodeTarget(node))
 
 	var tailLines int32 = 50
 	stream, err := m.client.C.Logs(nodeCtx, "system", common.ContainerDriver_CONTAINERD, svc, true, tailLines)

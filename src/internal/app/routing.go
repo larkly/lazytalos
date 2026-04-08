@@ -67,6 +67,10 @@ func (m Model) updateAllViews(msg tea.Msg) (Model, tea.Cmd) {
 	if m.tabInited[1] {
 		m.nodeList, cmd = m.nodeList.Update(msg)
 		cmds = append(cmds, cmd)
+		// Sync discovered nodes to the log viewer selector pane.
+		if m.tabInited[3] {
+			m.syncLogViewerNodes()
+		}
 	}
 	if m.tabInited[2] {
 		m.serviceList, cmd = m.serviceList.Update(msg)

@@ -102,6 +102,7 @@ func (m Model) switchTab(idx int) (Model, tea.Cmd) {
 		if !m.tabInited[idx] {
 			m.logViewer = logviewer.New(m.client, m.refreshInterval)
 			m.logViewer.SetSize(m.width, m.contentHeight())
+			m.syncLogViewerNodes()
 			m.tabInited[idx] = true
 			m.statusBar.Hint = m.logViewer.Hints()
 			return m, m.logViewer.Init()

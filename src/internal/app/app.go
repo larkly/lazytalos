@@ -596,3 +596,23 @@ func (m Model) forceRefreshActiveView() (Model, tea.Cmd) {
 	}
 	return m, nil
 }
+
+// syncLogViewerNodes populates the log viewer's node selector from the
+// discovered cluster members, mapping hostnames to their first address
+// so the UI shows friendly names while API calls use routable addresses.
+func (m *Model) syncLogViewerNodes() {
+	allNodes := m.nodeList.AllNodes()
+	if len(allNodes) > 0 {
+		hostnames := make([]string, len(allNodes))
+		addrs := make(map[string]string, len(allNodes))
+		for i, n := range allNodes {
+			hostnames[i] = n.Hostname
+			if len(n.Addresses) > 0 {
+				addrs[n.Hostname] = n.Addresses[0]
+			}
+		}
+		m.logViewer.SetNodesWithAddrs(hostnames, addrs)
+	} else {
+		m.logViewer.SetNodes(m.client.Endpoints)
+	}
+}
