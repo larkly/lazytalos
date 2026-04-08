@@ -12,11 +12,13 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	machineapi "github.com/siderolabs/talos/pkg/machinery/api/machine"
+	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
+
 	"github.com/larkly/lazytalos/internal/cluster"
 	"github.com/larkly/lazytalos/internal/resources"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
-	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
 )
 
 // Expected service sets by node type.
@@ -394,38 +396,80 @@ func (m Model) fetchEvents() tea.Cmd {
 		}
 
 		var events []eventRow
-		for i := 0; i < 40; i++ { // read up to 40 to handle multi-node responses, deduplicate later
-			ev, err := stream.Recv()
+		for i := 0; i < 40; i++ {
+			raw, err := stream.Recv()
 			if err != nil {
 				break
 			}
-			hostname := ""
-			if ev.GetMetadata() != nil {
-				hostname = ev.GetMetadata().GetHostname()
-			}
-			actor := ev.GetActorId()
-			message := ""
-			if ev.GetData() != nil {
-				message = ev.GetData().GetTypeUrl()
-			}
-			// Extract type name from URL
-			if idx := strings.LastIndex(message, "."); idx >= 0 {
-				message = message[idx+1:]
+
+			ev, err := talosclient.UnmarshalEvent(raw)
+			if err != nil {
+				continue
 			}
 
+			node := shortenHostname(ev.Node)
+			typeName := ev.TypeURL
+			if idx := strings.LastIndex(typeName, "."); idx >= 0 {
+				typeName = typeName[idx+1:]
+			}
+			// Strip "talos/runtime/" prefix if present
+			if strings.HasPrefix(typeName, "talos/runtime/") {
+				typeName = typeName[len("talos/runtime/"):]
+			}
+
+			message := formatEventPayload(typeName, ev.Payload)
+
 			events = append(events, eventRow{
-				Node:    shortenHostname(hostname),
-				Actor:   actor,
+				Node:    node,
+				Actor:   ev.ActorID,
 				Message: message,
 			})
 		}
 
-		// Keep last 20
 		if len(events) > 20 {
 			events = events[len(events)-20:]
 		}
 
 		return eventsLoadedMsg{events: events}
+	}
+}
+
+// formatEventPayload extracts a human-readable message from a Talos event payload.
+func formatEventPayload(typeName string, payload interface{}) string {
+	switch p := payload.(type) {
+	case *machineapi.ServiceStateEvent:
+		action := p.GetAction().String()
+		svc := p.GetService()
+		msg := p.GetMessage()
+		if msg != "" {
+			return fmt.Sprintf("%s %s: %s", svc, action, msg)
+		}
+		return fmt.Sprintf("%s %s", svc, action)
+	case *machineapi.AddressEvent:
+		return fmt.Sprintf("AddressEvent: %s", strings.Join(p.GetAddresses(), ", "))
+	case *machineapi.MachineStatusEvent:
+		stage := p.GetStage().String()
+		status := p.GetStatus().GetReady()
+		return fmt.Sprintf("MachineStatus: %s ready=%v", stage, status)
+	case *machineapi.SequenceEvent:
+		seq := p.GetSequence()
+		action := p.GetAction().String()
+		if p.GetError() != nil {
+			return fmt.Sprintf("%s %s: %s", seq, action, p.GetError().GetMessage())
+		}
+		return fmt.Sprintf("%s %s", seq, action)
+	case *machineapi.PhaseEvent:
+		return fmt.Sprintf("Phase: %s %s", p.GetPhase(), p.GetAction().String())
+	case *machineapi.TaskEvent:
+		return fmt.Sprintf("Task: %s %s", p.GetTask(), p.GetAction().String())
+	case *machineapi.ConfigLoadErrorEvent:
+		return fmt.Sprintf("ConfigLoadError: %s", p.GetError())
+	case *machineapi.ConfigValidationErrorEvent:
+		return fmt.Sprintf("ConfigValidationError: %s", p.GetError())
+	case *machineapi.RestartEvent:
+		return fmt.Sprintf("Restart: %d", p.GetCmd())
+	default:
+		return typeName
 	}
 }
 
