@@ -165,6 +165,18 @@ func (m Model) updateList(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.cursor = 0
 		}
 		m.adjustScroll()
+	case key.Matches(msg, shared.Keys.YankIP):
+		if m.cursor < len(m.filtered) && len(m.filtered[m.cursor].Addresses) > 0 {
+			return m, func() tea.Msg {
+				return shared.YankMsg{Text: m.filtered[m.cursor].Addresses[0]}
+			}
+		}
+	case key.Matches(msg, shared.Keys.YankEndpoint):
+		if m.client != nil && len(m.client.Endpoints) > 0 {
+			return m, func() tea.Msg {
+				return shared.YankMsg{Text: m.client.Endpoints[0]}
+			}
+		}
 	}
 	return m, nil
 }
@@ -383,7 +395,7 @@ func (m Model) Hints() string {
 	if m.filterActive {
 		return "type to filter  enter:apply  esc:cancel"
 	}
-	return "space:select  A:all  enter:detail  /:filter  ctrl+o:reboot  ctrl+d:shutdown"
+	return "space:select  A:all  enter:detail  /:filter  y:copy IP  Y:copy endpoint  ctrl+o:reboot  ctrl+d:shutdown"
 }
 
 // ForceRefresh triggers an immediate data refresh.

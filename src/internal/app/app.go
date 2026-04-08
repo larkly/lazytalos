@@ -474,6 +474,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case shared.YankMsg:
+		m.statusBar.Hint = "Copied: " + msg.Text
+		return m, nil
+
 	case shared.UpdateAvailableMsg:
 		shared.Debugf("[app] update available: %s (%s)", msg.Version, msg.URL)
 		m.statusBar.Hint = "Update available: " + msg.Version + " — " + msg.URL

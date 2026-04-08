@@ -133,6 +133,28 @@ func TestCtrlXInDetailViewEmitsReset(t *testing.T) {
 	}
 }
 
+func TestYankIP(t *testing.T) {
+	m := New(nil, 0)
+	m.nodes = makeTestNodes()
+	m.applyFilter()
+	m.width = 80
+	m.height = 24
+
+	// Press 'y' to yank IP
+	_, cmd := m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 'y'}))
+	if cmd == nil {
+		t.Fatal("expected a command after pressing y")
+	}
+	msg := cmd()
+	yank, ok := msg.(shared.YankMsg)
+	if !ok {
+		t.Fatalf("expected YankMsg, got %T", msg)
+	}
+	if yank.Text != "10.0.0.1" {
+		t.Errorf("expected IP 10.0.0.1, got %q", yank.Text)
+	}
+}
+
 func TestTickMsg_TriggersRefresh(t *testing.T) {
 	m := New(nil, 0)
 	_, cmd := m.Update(shared.TickMsg{})
