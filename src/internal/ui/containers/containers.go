@@ -2,8 +2,10 @@
 package containers
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -12,6 +14,15 @@ import (
 	"github.com/larkly/lazytalos/internal/node"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
+)
+
+type sortField int
+
+const (
+	sortByNodeName sortField = iota
+	sortByState
+	sortByImage
+	sortFieldMax
 )
 
 // Internal messages.
@@ -32,6 +43,7 @@ type Model struct {
 	loading         bool
 	err             error
 	width, height   int
+	sortBy          sortField
 	refreshInterval time.Duration
 
 	// nodeFilter cycles through node names; empty means "all"
@@ -112,6 +124,9 @@ func (m Model) updateList(msg tea.KeyMsg) (Model, tea.Cmd) {
 				}
 			}
 		}
+	case key.Matches(msg, shared.Keys.Sort):
+		m.sortBy = (m.sortBy + 1) % sortFieldMax
+		m.sortData()
 	default:
 		// Toggle node filter with "n"
 		if msg.String() == "n" {
@@ -189,6 +204,26 @@ func (m *Model) uniqueNodes() []string {
 	return result
 }
 
+func (m *Model) sortData() {
+	switch m.sortBy {
+	case sortByNodeName:
+		slices.SortFunc(m.filtered, func(a, b node.Container) int {
+			if c := cmp.Compare(a.NodeHostname, b.NodeHostname); c != 0 {
+				return c
+			}
+			return cmp.Compare(a.Name, b.Name)
+		})
+	case sortByState:
+		slices.SortFunc(m.filtered, func(a, b node.Container) int {
+			return cmp.Compare(a.State, b.State)
+		})
+	case sortByImage:
+		slices.SortFunc(m.filtered, func(a, b node.Container) int {
+			return cmp.Compare(a.Image, b.Image)
+		})
+	}
+}
+
 func (m *Model) applyFilter() {
 	lower := strings.ToLower(m.filter)
 	m.filtered = nil
@@ -201,6 +236,7 @@ func (m *Model) applyFilter() {
 		}
 		m.filtered = append(m.filtered, c)
 	}
+	m.sortData()
 	m.cursor = 0
 }
 
@@ -339,7 +375,8 @@ func (m Model) Hints() string {
 	if m.filterActive {
 		return "type to filter  enter:apply  esc:cancel"
 	}
-	return "enter:detail  /:filter  n:node-filter  ctrl+l:logs"
+	sortLabel := [sortFieldMax]string{"node/name", "state", "image"}
+	return fmt.Sprintf("enter:detail  /:filter  s:sort(%s)  n:node-filter  ctrl+l:logs", sortLabel[m.sortBy])
 }
 
 // ForceRefresh triggers an immediate data refresh.

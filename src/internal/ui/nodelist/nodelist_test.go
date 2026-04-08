@@ -163,6 +163,36 @@ func TestTickMsg_TriggersRefresh(t *testing.T) {
 	}
 }
 
+func TestSortCycle(t *testing.T) {
+	m := New(nil, 0)
+	m.nodes = makeTestNodes()
+	m.applyFilter()
+	m.width = 80
+	m.height = 24
+
+	if m.sortBy != sortByHostname {
+		t.Fatalf("expected initial sort sortByHostname, got %d", m.sortBy)
+	}
+
+	// Press 's' to cycle sort
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByType {
+		t.Errorf("expected sortByType after first s, got %d", m.sortBy)
+	}
+
+	// Press 's' again
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByHealth {
+		t.Errorf("expected sortByHealth after second s, got %d", m.sortBy)
+	}
+
+	// Press 's' again - wraps around
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByHostname {
+		t.Errorf("expected sortByHostname after wrap, got %d", m.sortBy)
+	}
+}
+
 func TestSelectedNodes_CursorFallback(t *testing.T) {
 	m := New(nil, 0)
 	m.nodes = makeTestNodes()

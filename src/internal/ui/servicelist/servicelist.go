@@ -2,8 +2,10 @@
 package servicelist
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -12,6 +14,15 @@ import (
 	"charm.land/bubbletea/v2"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
+)
+
+type sortField int
+
+const (
+	sortByNodeService sortField = iota
+	sortByState
+	sortByLastChange
+	sortFieldMax
 )
 
 // ServiceListRow represents a single service on a single node.
@@ -46,6 +57,7 @@ type Model struct {
 	width           int
 	height          int
 	scrollOff       int
+	sortBy          sortField
 	refreshInterval time.Duration
 }
 
@@ -116,6 +128,9 @@ func (m Model) updateList(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.groupByNode = !m.groupByNode
 	case key.Matches(msg, shared.Keys.Filter):
 		m.filterActive = true
+	case key.Matches(msg, shared.Keys.Sort):
+		m.sortBy = (m.sortBy + 1) % sortFieldMax
+		m.sortData()
 	case key.Matches(msg, shared.Keys.ServiceRestart):
 		return m, m.emitServiceRestart()
 	case key.Matches(msg, shared.Keys.Back):
@@ -173,7 +188,8 @@ func (m Model) updateDetail(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 func (m *Model) applyFilter() {
 	if m.filter == "" {
-		m.filtered = m.rows
+		m.filtered = make([]ServiceListRow, len(m.rows))
+		copy(m.filtered, m.rows)
 	} else {
 		lower := strings.ToLower(m.filter)
 		m.filtered = nil
@@ -185,11 +201,32 @@ func (m *Model) applyFilter() {
 			}
 		}
 	}
+	m.sortData()
 	if m.cursor >= len(m.filtered) {
 		m.cursor = len(m.filtered) - 1
 	}
 	if m.cursor < 0 {
 		m.cursor = 0
+	}
+}
+
+func (m *Model) sortData() {
+	switch m.sortBy {
+	case sortByNodeService:
+		slices.SortFunc(m.filtered, func(a, b ServiceListRow) int {
+			if c := cmp.Compare(a.Node, b.Node); c != 0 {
+				return c
+			}
+			return cmp.Compare(a.ServiceID, b.ServiceID)
+		})
+	case sortByState:
+		slices.SortFunc(m.filtered, func(a, b ServiceListRow) int {
+			return cmp.Compare(a.State, b.State)
+		})
+	case sortByLastChange:
+		slices.SortFunc(m.filtered, func(a, b ServiceListRow) int {
+			return cmp.Compare(a.LastChange, b.LastChange)
+		})
 	}
 }
 
@@ -356,7 +393,8 @@ func (m Model) Hints() string {
 	if m.filterActive {
 		return "type to filter  enter:apply  esc:cancel"
 	}
-	return "enter:detail  /:filter  g:group by node  ctrl+k:restart service"
+	sortLabel := [sortFieldMax]string{"node/service", "state", "last change"}
+	return fmt.Sprintf("enter:detail  /:filter  s:sort(%s)  g:group by node  ctrl+k:restart service", sortLabel[m.sortBy])
 }
 
 // ForceRefresh triggers an immediate data refresh.

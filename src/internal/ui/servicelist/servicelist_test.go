@@ -53,6 +53,37 @@ func TestGroupByNodeToggle(t *testing.T) {
 	}
 }
 
+func TestSortCycle(t *testing.T) {
+	m := New(nil, 0)
+	m.rows = []ServiceListRow{
+		{Node: "node-b", ServiceID: "kubelet", State: "Running", LastChange: "10:00:00"},
+		{Node: "node-a", ServiceID: "apid", State: "Stopped", LastChange: "09:00:00"},
+	}
+	m.applyFilter()
+
+	if m.sortBy != sortByNodeService {
+		t.Fatalf("expected initial sort sortByNodeService, got %d", m.sortBy)
+	}
+
+	// Press 's' to cycle
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByState {
+		t.Errorf("expected sortByState after first s, got %d", m.sortBy)
+	}
+
+	// Press 's' again
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByLastChange {
+		t.Errorf("expected sortByLastChange after second s, got %d", m.sortBy)
+	}
+
+	// Press 's' again - wraps around
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByNodeService {
+		t.Errorf("expected sortByNodeService after wrap, got %d", m.sortBy)
+	}
+}
+
 func TestTickMsg_TriggersRefresh(t *testing.T) {
 	m := New(nil, 0)
 	_, cmd := m.Update(shared.TickMsg{})

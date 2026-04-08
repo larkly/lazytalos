@@ -2,8 +2,10 @@
 package nodelist
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -12,6 +14,15 @@ import (
 	"github.com/larkly/lazytalos/internal/cluster"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
+)
+
+type sortField int
+
+const (
+	sortByHostname sortField = iota
+	sortByType
+	sortByHealth
+	sortFieldMax
 )
 
 // Internal messages.
@@ -47,6 +58,7 @@ type Model struct {
 	width           int
 	height          int
 	scrollOff       int
+	sortBy          sortField
 	refreshInterval time.Duration
 }
 
@@ -165,6 +177,9 @@ func (m Model) updateList(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.cursor = 0
 		}
 		m.adjustScroll()
+	case key.Matches(msg, shared.Keys.Sort):
+		m.sortBy = (m.sortBy + 1) % sortFieldMax
+		m.sortData()
 	case key.Matches(msg, shared.Keys.YankIP):
 		if m.cursor < len(m.filtered) && len(m.filtered[m.cursor].Addresses) > 0 {
 			return m, func() tea.Msg {
@@ -217,7 +232,8 @@ func (m Model) updateDetail(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 func (m *Model) applyFilter() {
 	if m.filter == "" {
-		m.filtered = m.nodes
+		m.filtered = make([]cluster.NodeInfo, len(m.nodes))
+		copy(m.filtered, m.nodes)
 	} else {
 		lower := strings.ToLower(m.filter)
 		m.filtered = nil
@@ -228,11 +244,37 @@ func (m *Model) applyFilter() {
 			}
 		}
 	}
+	m.sortData()
 	if m.cursor >= len(m.filtered) {
 		m.cursor = len(m.filtered) - 1
 	}
 	if m.cursor < 0 {
 		m.cursor = 0
+	}
+}
+
+func (m *Model) sortData() {
+	switch m.sortBy {
+	case sortByHostname:
+		slices.SortFunc(m.filtered, func(a, b cluster.NodeInfo) int {
+			return cmp.Compare(a.Hostname, b.Hostname)
+		})
+	case sortByType:
+		slices.SortFunc(m.filtered, func(a, b cluster.NodeInfo) int {
+			return cmp.Compare(a.MachineType, b.MachineType)
+		})
+	case sortByHealth:
+		slices.SortFunc(m.filtered, func(a, b cluster.NodeInfo) int {
+			aH := 0
+			if a.Healthy {
+				aH = 1
+			}
+			bH := 0
+			if b.Healthy {
+				bH = 1
+			}
+			return cmp.Compare(aH, bH)
+		})
 	}
 }
 
@@ -395,7 +437,8 @@ func (m Model) Hints() string {
 	if m.filterActive {
 		return "type to filter  enter:apply  esc:cancel"
 	}
-	return "space:select  A:all  enter:detail  /:filter  y:copy IP  Y:copy endpoint  ctrl+o:reboot  ctrl+d:shutdown"
+	sortLabel := [sortFieldMax]string{"hostname", "type", "health"}
+	return fmt.Sprintf("space:select  A:all  enter:detail  /:filter  s:sort(%s)  y:copy IP  Y:copy endpoint  ctrl+o:reboot  ctrl+d:shutdown", sortLabel[m.sortBy])
 }
 
 // ForceRefresh triggers an immediate data refresh.
