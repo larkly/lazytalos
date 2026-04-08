@@ -72,12 +72,18 @@ type diagnosticsLoadedMsg struct {
 	err         error
 }
 
+type cpuLoadedMsg struct {
+	cpuByNode map[string]resources.CPUStats
+	err       error
+}
+
 // Model is the dashboard view model.
 type Model struct {
 	client          *talos.Client
 	nodes           []cluster.NodeInfo
 	servicesByNode  map[string][]serviceRow
 	memoryByNode    map[string]memStats
+	cpuByNode       map[string]resources.CPUStats
 	events          []eventRow
 	diagnostics     []resources.DiagnosticEntry
 	loading         bool
@@ -97,6 +103,7 @@ func New(client *talos.Client, refreshInterval time.Duration) Model {
 		refreshInterval: refreshInterval,
 		servicesByNode:  make(map[string][]serviceRow),
 		memoryByNode:    make(map[string]memStats),
+		cpuByNode:       make(map[string]resources.CPUStats),
 		loading:         true,
 		followEvents:    true,
 	}
@@ -163,6 +170,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.appendErr(msg.err)
 		} else {
 			m.diagnostics = msg.diagnostics
+		}
+
+	case cpuLoadedMsg:
+		if msg.err != nil {
+			m.appendErr(msg.err)
+		} else {
+			m.cpuByNode = msg.cpuByNode
 		}
 	}
 
@@ -265,6 +279,7 @@ func (m Model) ForceRefresh() tea.Cmd {
 		m.fetchMembers(),
 		m.fetchServices(),
 		m.fetchMemory(),
+		m.fetchCPU(),
 		m.fetchEvents(),
 		m.fetchDiagnostics(),
 	)
@@ -471,10 +486,23 @@ func (m Model) fetchDiagnostics() tea.Cmd {
 	}
 }
 
-// nodeTargets discovers all cluster nodes and returns their addresses plus
-// a mapping from any address/IP back to the canonical hostname.
-// The Talos API returns IPs (not hostnames) in response metadata, so callers
-// must use this map to resolve response hostnames to member hostnames.
+func (m Model) fetchCPU() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		if client == nil || client.C == nil {
+			return cpuLoadedMsg{}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		stats, err := resources.ListCPUStats(ctx, client)
+		byNode := make(map[string]resources.CPUStats, len(stats))
+		for _, s := range stats {
+			byNode[s.NodeHostname] = s
+		}
+		return cpuLoadedMsg{cpuByNode: byNode, err: err}
+	}
+}
+
 // --- Rendering helpers ---
 
 func (m Model) renderClusterStatus(maxLines int) string {
@@ -554,7 +582,7 @@ func (m Model) renderClusterStatus(maxLines int) string {
 }
 
 // RenderNodeHealth renders the node health panel with memory bars.
-func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serviceRow, memoryByNode map[string]memStats, maxLines, barWidth int) string {
+func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serviceRow, memoryByNode map[string]memStats, cpuByNode map[string]resources.CPUStats, maxLines, barWidth int) string {
 	title := shared.StyleHeader.Render("NODE HEALTH")
 	lines := []string{title}
 
@@ -588,19 +616,33 @@ func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serv
 			}
 		}
 
+		// CPU%
+		cpuStr := shared.StyleMuted.Render(" -- ")
+		if cs, ok := cpuByNode[n.Hostname]; ok {
+			cpuStr = fmt.Sprintf("%2.0f%%", cs.UsagePercent*100)
+		}
+
 		// Memory bar
-		memBar := shared.StyleMuted.Render("  N/A")
+		memBar := shared.StyleMuted.Render(" N/A")
 		if mem, ok := memoryByNode[n.Hostname]; ok && mem.TotalKB > 0 {
 			used := mem.TotalKB - mem.AvailableKB
 			pct := float64(used) / float64(mem.TotalKB)
 			memBar = renderMemBar(pct, barWidth)
 		}
 
-		row := fmt.Sprintf("%-16s %s %s %s",
-			shared.Truncate(shortenHostname(n.Hostname), 16),
+		// Uptime
+		uptimeStr := ""
+		if cs, ok := cpuByNode[n.Hostname]; ok && !cs.BootTime.IsZero() {
+			uptimeStr = shared.StyleMuted.Render(" " + formatUptime(time.Since(cs.BootTime)))
+		}
+
+		row := fmt.Sprintf("%-14s %s %s %s %s%s",
+			shared.Truncate(shortenHostname(n.Hostname), 14),
 			typeStr,
 			healthStyle.Render(healthIcon),
+			cpuStr,
 			memBar,
+			uptimeStr,
 		)
 		lines = append(lines, row)
 	}
@@ -619,7 +661,7 @@ func (m Model) renderNodeHealth(maxLines int) string {
 	if barW > 30 {
 		barW = 30
 	}
-	return RenderNodeHealth(m.nodes, m.servicesByNode, m.memoryByNode, maxLines, barW)
+	return RenderNodeHealth(m.nodes, m.servicesByNode, m.memoryByNode, m.cpuByNode, maxLines, barW)
 }
 
 // renderMemBar creates a block-character memory bar like "62% ████████░░░░"
@@ -829,6 +871,16 @@ func (m *Model) clearErr() {
 }
 
 // --- Utility functions ---
+
+func formatUptime(d time.Duration) string {
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	if days > 0 {
+		return fmt.Sprintf("%dd%dh", days, hours)
+	}
+	mins := int(d.Minutes()) % 60
+	return fmt.Sprintf("%dh%dm", hours, mins)
+}
 
 func shortenHostname(hostname string) string {
 	// Try to shorten: "my-cluster-cp-1" -> "cp-1"

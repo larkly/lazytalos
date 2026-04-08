@@ -9,7 +9,7 @@ import (
 )
 
 func TestRenderNodeHealth_Empty(t *testing.T) {
-	result := RenderNodeHealth(nil, nil, nil, 10, 12)
+	result := RenderNodeHealth(nil, nil, nil, nil, 10, 12)
 	if !strings.Contains(result, "No nodes found") {
 		t.Errorf("expected 'No nodes found', got %q", result)
 	}
@@ -25,7 +25,7 @@ func TestRenderNodeHealth_WithNodes(t *testing.T) {
 		"worker-1": {TotalKB: 16000000, AvailableKB: 6000000},
 	}
 
-	result := RenderNodeHealth(nodes, nil, mem, 10, 12)
+	result := RenderNodeHealth(nodes, nil, mem, nil, 10, 12)
 	if !strings.Contains(result, "cp-1") {
 		t.Error("expected cp-1 in output")
 	}

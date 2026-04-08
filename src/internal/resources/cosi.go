@@ -8,6 +8,7 @@ import (
 	"github.com/cosi-project/runtime/pkg/resource"
 	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
 
+	"github.com/larkly/lazytalos/internal/cluster"
 	"github.com/larkly/lazytalos/internal/talos"
 )
 
@@ -34,11 +35,13 @@ func listPerNode(
 		return nil
 	}
 
+	targets, resolve := cluster.NodeTargets(ctx, c)
+
 	var lastErr error
 	successCount := 0
 
-	for _, endpoint := range c.Endpoints {
-		nodeCtx := talosclient.WithNode(ctx, endpoint)
+	for _, target := range targets {
+		nodeCtx := talosclient.WithNode(ctx, target)
 
 		list, err := c.C.COSI.List(nodeCtx, md)
 		if err != nil {
@@ -49,7 +52,7 @@ func listPerNode(
 		successCount++
 
 		for _, item := range list.Items {
-			fn(endpoint, item)
+			fn(resolve(target), item)
 		}
 	}
 
