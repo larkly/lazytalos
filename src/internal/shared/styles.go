@@ -49,8 +49,8 @@ var (
 
 func init() {
 	// Initialize colors.
-	ColorPrimary = lipgloss.Color("#7D56F4")
-	ColorSecondary = lipgloss.Color("#6C71C4")
+	ColorPrimary = lipgloss.Color("#00BCD4")
+	ColorSecondary = lipgloss.Color("#56B6C2")
 	ColorSuccess = lipgloss.Color("#2AA198")
 	ColorWarning = lipgloss.Color("#B58900")
 	ColorError = lipgloss.Color("#DC322F")
@@ -64,7 +64,7 @@ func init() {
 		lipgloss.Color("#859900"),
 		lipgloss.Color("#B58900"),
 		lipgloss.Color("#CB4B16"),
-		lipgloss.Color("#6C71C4"),
+		lipgloss.Color("#0097A7"),
 	}
 	RebuildStyles()
 }
