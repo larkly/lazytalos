@@ -16,9 +16,24 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) viewContent() string {
-	// Config editor overlay has highest priority.
+	// Upgrade wizard overlay has highest priority.
+	if m.showingUpgrade {
+		return m.upgradeWizard.View()
+	}
+
+	// Config editor overlay has second highest priority.
 	if m.editingConfig {
 		return m.configEditor.View()
+	}
+
+	// Help overlay: second highest priority.
+	if m.help.IsVisible() {
+		return m.help.View()
+	}
+
+	// Config view overlay: third highest priority.
+	if m.configView.IsVisible() {
+		return m.configView.View()
 	}
 
 	// Modal overlay priority chain
@@ -27,6 +42,9 @@ func (m Model) viewContent() string {
 	}
 	if m.activeModal == modalError {
 		return m.errModal.View()
+	}
+	if m.activeModal == modalReset {
+		return m.resetModal.View()
 	}
 
 	var content string

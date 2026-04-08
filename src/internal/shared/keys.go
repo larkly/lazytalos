@@ -56,6 +56,15 @@ type KeyMap struct {
 	Confirm key.Binding // ctrl+s
 	// Deny shares the same key as Back (Esc); in modal context use Deny, in navigation context use Back to indicate intent.
 	Deny key.Binding // Esc (same as Back — handled contextually)
+
+	// Upgrade / node actions
+	UpgradeCluster key.Binding // ctrl+u
+	ResetNode      key.Binding // ctrl+x
+	PauseUpgrade   key.Binding // ctrl+p
+	AbortUpgrade   key.Binding // ctrl+a
+	YankIP         key.Binding // y
+	YankEndpoint   key.Binding // Y
+	ConfigView     key.Binding // ctrl+,
 }
 
 // Keys is the global key binding map.
@@ -211,5 +220,33 @@ var Keys = KeyMap{
 	Deny: key.NewBinding(
 		key.WithKeys("esc"),
 		key.WithHelp("esc", "cancel"),
+	),
+	UpgradeCluster: key.NewBinding(
+		key.WithKeys("ctrl+u"),
+		key.WithHelp("ctrl+u", "upgrade cluster"),
+	),
+	ResetNode: key.NewBinding(
+		key.WithKeys("ctrl+x"),
+		key.WithHelp("ctrl+x", "reset node"),
+	),
+	PauseUpgrade: key.NewBinding(
+		key.WithKeys("ctrl+p"),
+		key.WithHelp("ctrl+p", "pause upgrade"),
+	),
+	AbortUpgrade: key.NewBinding(
+		key.WithKeys("ctrl+a"),
+		key.WithHelp("ctrl+a", "abort upgrade"),
+	),
+	YankIP: key.NewBinding(
+		key.WithKeys("y"),
+		key.WithHelp("y", "copy node IP"),
+	),
+	YankEndpoint: key.NewBinding(
+		key.WithKeys("Y"),
+		key.WithHelp("Y", "copy endpoint"),
+	),
+	ConfigView: key.NewBinding(
+		key.WithKeys("ctrl+,"),
+		key.WithHelp("ctrl+,", "view talosconfig"),
 	),
 }

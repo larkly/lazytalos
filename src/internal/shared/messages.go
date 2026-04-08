@@ -86,3 +86,47 @@ type EtcdMemberRemoveRequestMsg struct {
 	Node     string // CP node to target for the removal RPC
 	MemberID uint64
 }
+
+// UpgradeRequestMsg is sent to start a rolling cluster upgrade.
+type UpgradeRequestMsg struct {
+	Nodes    []string
+	Image    string
+	Preserve bool
+	Stage    bool
+}
+
+// NodeUpgradedMsg is sent when a node's Upgrade RPC completes successfully.
+type NodeUpgradedMsg struct{ Index int }
+
+// NodeUpgradeErrMsg is sent when a node's Upgrade RPC fails.
+type NodeUpgradeErrMsg struct {
+	Index int
+	Err   error
+}
+
+// NodeHealthyMsg is sent when a node responds to a Version health poll.
+type NodeHealthyMsg struct{ Index int }
+
+// NodeHealthErrMsg is sent when a node health poll fails.
+type NodeHealthErrMsg struct {
+	Index int
+	Err   error
+}
+
+// UpgradePausedMsg is sent when the upgrade is paused by the user.
+type UpgradePausedMsg struct{}
+
+// UpgradeAbortedMsg is sent when the upgrade is aborted by the user.
+type UpgradeAbortedMsg struct{}
+
+// NodeResetRequestMsg is sent to initiate a node reset.
+type NodeResetRequestMsg struct{ Node string }
+
+// UpdateAvailableMsg is sent when a newer lazytalos release is detected.
+type UpdateAvailableMsg struct {
+	Version string
+	URL     string
+}
+
+// YankMsg is sent when text should be copied to the clipboard.
+type YankMsg struct{ Text string }

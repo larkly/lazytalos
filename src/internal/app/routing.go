@@ -105,6 +105,8 @@ func (m Model) updateModal(msg tea.Msg) (Model, tea.Cmd) {
 		m.confirm, cmd = m.confirm.Update(msg)
 	case modalError:
 		m.errModal, cmd = m.errModal.Update(msg)
+	case modalReset:
+		m.resetModal, cmd = m.resetModal.Update(msg)
 	}
 	return m, cmd
 }

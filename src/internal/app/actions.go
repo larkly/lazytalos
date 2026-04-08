@@ -74,6 +74,19 @@ func (m Model) restartService(node, serviceID string) tea.Cmd {
 	}
 }
 
+func (m Model) resetNode(node string, graceful bool) tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		nodeCtx := talosclient.WithNodes(ctx, node)
+		if err := client.C.Reset(nodeCtx, graceful, true); err != nil {
+			return shared.NodeActionErrMsg{Action: "reset", Err: err}
+		}
+		return shared.NodeActionMsg{Action: "reset", Nodes: []string{node}}
+	}
+}
+
 // nodeContext returns a context targeting a specific Talos node.
 func nodeContext(ctx context.Context, node string) context.Context {
 	return talosclient.WithNodes(ctx, node)

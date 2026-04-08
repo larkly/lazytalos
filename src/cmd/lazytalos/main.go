@@ -17,13 +17,14 @@ var version = "dev"
 
 func main() {
 	var (
-		talosconfig string
-		contextFlag string
-		refresh     int
-		plain       bool
-		debug       bool
-		showVersion bool
-		pickContext bool
+		talosconfig   string
+		contextFlag   string
+		refresh       int
+		plain         bool
+		debug         bool
+		showVersion   bool
+		pickContext   bool
+		noUpdateCheck bool
 	)
 
 	flag.StringVar(&talosconfig, "talosconfig", "", "path to talosconfig (default: $TALOSCONFIG env var, then ~/.talos/config)")
@@ -33,6 +34,7 @@ func main() {
 	flag.BoolVar(&debug, "debug", false, "write debug log to ~/.cache/lazytalos/debug.log")
 	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	flag.BoolVar(&pickContext, "pick-context", false, "force showing the context picker even when only one context is configured")
+	flag.BoolVar(&noUpdateCheck, "no-update-check", false, "disable the startup self-update check")
 	flag.Parse()
 
 	if showVersion {
@@ -66,6 +68,7 @@ func main() {
 		PickContext:     pickContext,
 		Version:         version,
 		Plain:           plain,
+		NoUpdateCheck:   noUpdateCheck,
 	})
 
 	p := tea.NewProgram(m)

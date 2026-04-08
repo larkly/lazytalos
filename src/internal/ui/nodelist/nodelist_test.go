@@ -112,11 +112,84 @@ func TestFilter(t *testing.T) {
 	}
 }
 
+func TestCtrlXInDetailViewEmitsReset(t *testing.T) {
+	m := New(nil, 0)
+	m.nodes = makeTestNodes()
+	m.applyFilter()
+	m.detailView = true
+	m.cursor = 0
+
+	_, cmd := m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl}))
+	if cmd == nil {
+		t.Fatal("expected a command after ctrl+x in detail view")
+	}
+	msg := cmd()
+	req, ok := msg.(shared.NodeResetRequestMsg)
+	if !ok {
+		t.Fatalf("expected NodeResetRequestMsg, got %T", msg)
+	}
+	if req.Node != "cp-1" {
+		t.Errorf("expected node cp-1, got %q", req.Node)
+	}
+}
+
+func TestYankIP(t *testing.T) {
+	m := New(nil, 0)
+	m.nodes = makeTestNodes()
+	m.applyFilter()
+	m.width = 80
+	m.height = 24
+
+	// Press 'y' to yank IP
+	_, cmd := m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 'y'}))
+	if cmd == nil {
+		t.Fatal("expected a command after pressing y")
+	}
+	msg := cmd()
+	yank, ok := msg.(shared.YankMsg)
+	if !ok {
+		t.Fatalf("expected YankMsg, got %T", msg)
+	}
+	if yank.Text != "10.0.0.1" {
+		t.Errorf("expected IP 10.0.0.1, got %q", yank.Text)
+	}
+}
+
 func TestTickMsg_TriggersRefresh(t *testing.T) {
 	m := New(nil, 0)
 	_, cmd := m.Update(shared.TickMsg{})
 	if cmd == nil {
 		t.Error("expected TickMsg to produce a fetch command")
+	}
+}
+
+func TestSortCycle(t *testing.T) {
+	m := New(nil, 0)
+	m.nodes = makeTestNodes()
+	m.applyFilter()
+	m.width = 80
+	m.height = 24
+
+	if m.sortBy != sortByHostname {
+		t.Fatalf("expected initial sort sortByHostname, got %d", m.sortBy)
+	}
+
+	// Press 's' to cycle sort
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByType {
+		t.Errorf("expected sortByType after first s, got %d", m.sortBy)
+	}
+
+	// Press 's' again
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByHealth {
+		t.Errorf("expected sortByHealth after second s, got %d", m.sortBy)
+	}
+
+	// Press 's' again - wraps around
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByHostname {
+		t.Errorf("expected sortByHostname after wrap, got %d", m.sortBy)
 	}
 }
 

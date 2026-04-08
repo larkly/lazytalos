@@ -11,16 +11,21 @@ import (
 	"github.com/larkly/lazytalos/internal/etcd"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
+	"github.com/larkly/lazytalos/internal/update"
+	"github.com/larkly/lazytalos/internal/cluster"
 	"github.com/larkly/lazytalos/internal/ui/configeditor"
 	"github.com/larkly/lazytalos/internal/ui/containers"
 	"github.com/larkly/lazytalos/internal/ui/contextpicker"
 	"github.com/larkly/lazytalos/internal/ui/dashboard"
+	"github.com/larkly/lazytalos/internal/ui/configview"
 	"github.com/larkly/lazytalos/internal/ui/etcdview"
+	"github.com/larkly/lazytalos/internal/ui/help"
 	"github.com/larkly/lazytalos/internal/ui/logviewer"
 	"github.com/larkly/lazytalos/internal/ui/modal"
 	"github.com/larkly/lazytalos/internal/ui/network"
 	"github.com/larkly/lazytalos/internal/ui/nodelist"
 	"github.com/larkly/lazytalos/internal/ui/servicelist"
+	upgradeui "github.com/larkly/lazytalos/internal/ui/upgrade"
 	"github.com/larkly/lazytalos/internal/ui/statusbar"
 	"github.com/larkly/lazytalos/internal/ui/storage"
 )
@@ -53,6 +58,7 @@ const (
 	modalNone modalType = iota
 	modalConfirm
 	modalError
+	modalReset
 )
 
 // Model is the root application model.
@@ -79,9 +85,19 @@ type Model struct {
 	storage     storage.Model
 	etcdView    etcdview.Model
 
+	// Help overlay
+	help help.Model
+
+	// Config view overlay
+	configView configview.Model
+
 	// Config editor overlay
-	configEditor configeditor.Model
+	configEditor  configeditor.Model
 	editingConfig bool
+
+	// Upgrade wizard overlay
+	upgradeWizard  upgradeui.Model
+	showingUpgrade bool
 
 	// Selection (for bulk node ops)
 	selectedNodes map[string]bool
@@ -90,6 +106,7 @@ type Model struct {
 	activeModal modalType
 	confirm     modal.ConfirmModel
 	errModal    modal.ErrorModel
+	resetModal  modal.ResetModal
 
 	// etcd member removal state
 	etcdMemberNode string
@@ -107,6 +124,7 @@ type Model struct {
 	refreshInterval time.Duration
 	talosconfig     string
 	pickContext     bool // always show picker
+	noUpdateCheck   bool
 
 	// State
 	restart    bool
@@ -119,9 +137,10 @@ type Options struct {
 	Talosconfig     string
 	Context         string
 	RefreshInterval time.Duration
-	PickContext     bool
-	Version        string
-	Plain          bool
+	PickContext      bool
+	Version         string
+	Plain           bool
+	NoUpdateCheck   bool
 }
 
 // ShouldRestart returns true if the app quit due to a restart request.
@@ -155,8 +174,11 @@ func New(opts Options) Model {
 		refreshInterval: refresh,
 		talosconfig:     opts.Talosconfig,
 		pickContext:     opts.PickContext,
-		version:        opts.Version,
-		selectedNodes:  make(map[string]bool),
+		version:         opts.Version,
+		selectedNodes:   make(map[string]bool),
+		help:            help.New(),
+		configView:      configview.New(opts.Talosconfig),
+		noUpdateCheck:   opts.NoUpdateCheck,
 	}
 
 	// Auto-select if --context flag is set, or exactly one context and not forced to pick
@@ -178,13 +200,35 @@ func New(opts Options) Model {
 
 // Init returns the initial command.
 func (m Model) Init() tea.Cmd {
+	var cmds []tea.Cmd
+
 	if m.autoSelect != "" {
 		name := m.autoSelect
-		return func() tea.Msg {
+		cmds = append(cmds, func() tea.Msg {
 			return shared.ContextSelectedMsg{ContextName: name}
-		}
+		})
 	}
-	return nil
+
+	if !m.noUpdateCheck {
+		ver := m.version
+		cmds = append(cmds, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			rel, _ := update.CheckLatest(ctx)
+			if rel == nil {
+				return nil
+			}
+			if update.IsNewer(rel.Version, ver) {
+				return shared.UpdateAvailableMsg{Version: rel.Version, URL: rel.URL}
+			}
+			return nil
+		})
+	}
+
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update handles all messages.
@@ -211,6 +255,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Upgrade wizard overlay: route all messages to it while active.
+	if m.showingUpgrade {
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			m.width = msg.Width
+			m.height = msg.Height
+			m.statusBar.Width = m.width
+			m.upgradeWizard.SetSize(m.width, m.contentHeight())
+			return m, nil
+		case upgradeui.ClosedMsg:
+			m.showingUpgrade = false
+			if msg.Completed {
+				m.statusBar.Hint = "Cluster upgrade completed"
+			}
+			return m, nil
+		default:
+			var cmd tea.Cmd
+			m.upgradeWizard, cmd = m.upgradeWizard.Update(msg)
+			return m, cmd
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -219,6 +285,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirm.SetSize(m.width, m.height)
 		m.errModal.SetSize(m.width, m.height)
 		m.statusBar.Width = m.width
+		m.help.SetSize(m.width, m.height)
+		m.configView.SetSize(m.width, m.height)
 		return m.updateActiveView(msg)
 
 	case tea.KeyMsg:
@@ -227,11 +295,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateModal(msg)
 		}
 
+		// Help overlay intercepts all keys when visible
+		if m.help.IsVisible() {
+			var cmd tea.Cmd
+			m.help, cmd = m.help.Update(msg)
+			return m, cmd
+		}
+
+		// Config view overlay intercepts all keys when visible
+		if m.configView.IsVisible() {
+			var cmd tea.Cmd
+			m.configView, cmd = m.configView.Update(msg)
+			return m, cmd
+		}
+
 		switch {
 		case key.Matches(msg, shared.Keys.Quit) && m.view != viewContextPicker:
 			return m, tea.Quit
 		case key.Matches(msg, shared.Keys.ContextPicker) && m.view != viewContextPicker:
 			return m.switchToContextPicker()
+		case key.Matches(msg, shared.Keys.Help) && m.view != viewContextPicker:
+			m.help = m.help.Toggle()
+			return m, nil
+		case key.Matches(msg, shared.Keys.ConfigView) && m.view != viewContextPicker:
+			m.configView = m.configView.Toggle()
+			return m, nil
 		}
 
 		// Tab switching (only from top-level views)
@@ -272,6 +360,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.contextName = msg.ContextName
 		m.statusBar.Context = msg.ContextName
 		m.statusBar.Connected = true
+		m.configView.SetActiveContext(msg.ContextName)
 		// Switch to dashboard tab (first tab)
 		m, cmd := m.switchTab(0)
 		return m, tea.Batch(cmd, m.refreshTickCmd())
@@ -351,6 +440,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Child view wants to exit (ignored at top level -- no parent to go back to)
 		return m, nil
 
+	case configview.ClosedMsg:
+		// Config view was dismissed; no additional action needed.
+		return m, nil
+
 	case shared.ContainerLogsRequestMsg:
 		// Switch to the Logs tab.
 		m2, cmd := m.switchTab(3)
@@ -378,6 +471,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.editingConfig = true
 		return m, nil
 
+	case shared.UpgradeRequestMsg:
+		// Collect NodeInfo for the requested hostnames from the node list.
+		allNodes := m.nodeList.AllNodes()
+		requested := make(map[string]bool, len(msg.Nodes))
+		for _, h := range msg.Nodes {
+			requested[h] = true
+		}
+		var upgradeNodes []cluster.NodeInfo
+		for _, n := range allNodes {
+			if requested[n.Hostname] {
+				upgradeNodes = append(upgradeNodes, n)
+			}
+		}
+		if len(upgradeNodes) == 0 {
+			return m, nil
+		}
+		m.upgradeWizard = upgradeui.New(m.client, m.contextName, upgradeNodes, m.width, m.contentHeight())
+		m.showingUpgrade = true
+		return m, nil
+
 	case shared.EtcdMemberRemoveRequestMsg:
 		shared.Debugf("[app] etcd member remove request: node=%s memberID=%x", msg.Node, msg.MemberID)
 		m.etcdMemberNode = msg.Node
@@ -387,6 +500,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activeModal = modalConfirm
 		return m, nil
 
+	case shared.NodeResetRequestMsg:
+		m.resetModal = modal.NewResetModal(msg.Node, m.width, m.height)
+		m.activeModal = modalReset
+		return m, nil
+
+	case modal.ResetConfirmedMsg:
+		m.activeModal = modalNone
+		return m, m.resetNode(msg.Node, msg.Graceful)
+
+	case modal.ResetCancelledMsg:
+		m.activeModal = modalNone
+		return m, nil
+
 	case shared.LogLineMsg, shared.LogStreamEndedMsg:
 		// Always route log messages to the logviewer, even if it's not active.
 		if m.tabInited[3] {
@@ -394,6 +520,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logViewer, cmd = m.logViewer.Update(msg)
 			return m, cmd
 		}
+		return m, nil
+
+	case shared.YankMsg:
+		m.statusBar.Hint = "Copied: " + msg.Text
+		return m, nil
+
+	case shared.UpdateAvailableMsg:
+		shared.Debugf("[app] update available: %s (%s)", msg.Version, msg.URL)
+		m.statusBar.Hint = "Update available: " + msg.Version + " — " + msg.URL
 		return m, nil
 
 	case shared.TickMsg:

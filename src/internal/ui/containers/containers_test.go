@@ -105,6 +105,37 @@ func TestFilterLogic(t *testing.T) {
 	}
 }
 
+func TestSortCycle(t *testing.T) {
+	m := New(nil, 0)
+	m.containers = []node.Container{
+		{NodeHostname: "node2", Name: "etcd", Image: "etcd:v3.5.0", State: "RUNNING"},
+		{NodeHostname: "node1", Name: "kube-apiserver", Image: "kube-apiserver:v1.32.0", State: "STOPPED"},
+	}
+	m.applyFilter()
+
+	if m.sortBy != sortByNodeName {
+		t.Fatalf("expected initial sort sortByNodeName, got %d", m.sortBy)
+	}
+
+	// Press 's' to cycle
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByState {
+		t.Errorf("expected sortByState after first s, got %d", m.sortBy)
+	}
+
+	// Press 's' again
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByImage {
+		t.Errorf("expected sortByImage after second s, got %d", m.sortBy)
+	}
+
+	// Press 's' again - wraps around
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByNodeName {
+		t.Errorf("expected sortByNodeName after wrap, got %d", m.sortBy)
+	}
+}
+
 func TestContainerLogsMsg(t *testing.T) {
 	m := New(nil, 30*time.Second)
 	m.containers = []node.Container{

@@ -2,8 +2,10 @@
 package nodelist
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -12,6 +14,15 @@ import (
 	"github.com/larkly/lazytalos/internal/cluster"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
+)
+
+type sortField int
+
+const (
+	sortByHostname sortField = iota
+	sortByType
+	sortByHealth
+	sortFieldMax
 )
 
 // Internal messages.
@@ -47,6 +58,7 @@ type Model struct {
 	width           int
 	height          int
 	scrollOff       int
+	sortBy          sortField
 	refreshInterval time.Duration
 }
 
@@ -143,6 +155,24 @@ func (m Model) updateList(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, m.emitNodeAction("reboot")
 	case key.Matches(msg, shared.Keys.Shutdown):
 		return m, m.emitNodeAction("shutdown")
+	case key.Matches(msg, shared.Keys.UpgradeCluster):
+		var hostnames []string
+		selected := m.SelectedNodes()
+		if len(m.selected) == 0 && len(m.nodes) > 0 {
+			// no selection → use all nodes
+			for _, n := range m.nodes {
+				hostnames = append(hostnames, n.Hostname)
+			}
+		} else {
+			for _, n := range selected {
+				hostnames = append(hostnames, n.Hostname)
+			}
+		}
+		if len(hostnames) > 0 {
+			return m, func() tea.Msg {
+				return shared.UpgradeRequestMsg{Nodes: hostnames}
+			}
+		}
 	case key.Matches(msg, shared.Keys.Back):
 		if m.filter != "" {
 			m.filter = ""
@@ -165,6 +195,21 @@ func (m Model) updateList(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.cursor = 0
 		}
 		m.adjustScroll()
+	case key.Matches(msg, shared.Keys.Sort):
+		m.sortBy = (m.sortBy + 1) % sortFieldMax
+		m.sortData()
+	case key.Matches(msg, shared.Keys.YankIP):
+		if m.cursor < len(m.filtered) && len(m.filtered[m.cursor].Addresses) > 0 {
+			return m, func() tea.Msg {
+				return shared.YankMsg{Text: m.filtered[m.cursor].Addresses[0]}
+			}
+		}
+	case key.Matches(msg, shared.Keys.YankEndpoint):
+		if m.client != nil && len(m.client.Endpoints) > 0 {
+			return m, func() tea.Msg {
+				return shared.YankMsg{Text: m.client.Endpoints[0]}
+			}
+		}
 	}
 	return m, nil
 }
@@ -190,15 +235,23 @@ func (m Model) updateFilter(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) updateDetail(msg tea.KeyMsg) (Model, tea.Cmd) {
-	if key.Matches(msg, shared.Keys.Back) {
+	switch {
+	case key.Matches(msg, shared.Keys.Back):
 		m.detailView = false
+	case key.Matches(msg, shared.Keys.ResetNode):
+		if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
+			return m, func() tea.Msg {
+				return shared.NodeResetRequestMsg{Node: m.filtered[m.cursor].Hostname}
+			}
+		}
 	}
 	return m, nil
 }
 
 func (m *Model) applyFilter() {
 	if m.filter == "" {
-		m.filtered = m.nodes
+		m.filtered = make([]cluster.NodeInfo, len(m.nodes))
+		copy(m.filtered, m.nodes)
 	} else {
 		lower := strings.ToLower(m.filter)
 		m.filtered = nil
@@ -209,11 +262,37 @@ func (m *Model) applyFilter() {
 			}
 		}
 	}
+	m.sortData()
 	if m.cursor >= len(m.filtered) {
 		m.cursor = len(m.filtered) - 1
 	}
 	if m.cursor < 0 {
 		m.cursor = 0
+	}
+}
+
+func (m *Model) sortData() {
+	switch m.sortBy {
+	case sortByHostname:
+		slices.SortFunc(m.filtered, func(a, b cluster.NodeInfo) int {
+			return cmp.Compare(a.Hostname, b.Hostname)
+		})
+	case sortByType:
+		slices.SortFunc(m.filtered, func(a, b cluster.NodeInfo) int {
+			return cmp.Compare(a.MachineType, b.MachineType)
+		})
+	case sortByHealth:
+		slices.SortFunc(m.filtered, func(a, b cluster.NodeInfo) int {
+			aH := 0
+			if a.Healthy {
+				aH = 1
+			}
+			bH := 0
+			if b.Healthy {
+				bH = 1
+			}
+			return cmp.Compare(aH, bH)
+		})
 	}
 }
 
@@ -371,12 +450,13 @@ func (m *Model) SetSize(w, h int) {
 // Hints returns status bar hint text.
 func (m Model) Hints() string {
 	if m.detailView {
-		return "esc:back"
+		return "esc:back  ctrl+x:reset"
 	}
 	if m.filterActive {
 		return "type to filter  enter:apply  esc:cancel"
 	}
-	return "space:select  A:all  enter:detail  /:filter  ctrl+o:reboot  ctrl+d:shutdown"
+	sortLabel := [sortFieldMax]string{"hostname", "type", "health"}
+	return fmt.Sprintf("space:select  A:all  enter:detail  /:filter  s:sort(%s)  y:copy IP  Y:copy endpoint  ctrl+o:reboot  ctrl+d:shutdown  ctrl+u:upgrade", sortLabel[m.sortBy])
 }
 
 // ForceRefresh triggers an immediate data refresh.
@@ -399,6 +479,11 @@ func (m Model) SelectedNodes() []cluster.NodeInfo {
 		return []cluster.NodeInfo{m.filtered[m.cursor]}
 	}
 	return nil
+}
+
+// AllNodes returns the full list of loaded nodes.
+func (m Model) AllNodes() []cluster.NodeInfo {
+	return m.nodes
 }
 
 func (m Model) emitNodeAction(action string) tea.Cmd {
