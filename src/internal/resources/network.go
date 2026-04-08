@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"net/netip"
 
 	"github.com/cosi-project/runtime/pkg/resource"
 	networkres "github.com/siderolabs/talos/pkg/machinery/resources/network"
@@ -62,7 +63,7 @@ func ListAddresses(ctx context.Context, c *talos.Client) ([]AddressStatus, error
 		results = append(results, AddressStatus{
 			NodeHostname: nodeAddr,
 			Interface:    spec.LinkName,
-			Address:      spec.Address.String(),
+			Address:      prefixString(spec.Address),
 			Scope:        spec.Scope.String(),
 			Flags:        spec.Flags.String(),
 		})
@@ -92,8 +93,8 @@ func ListRoutes(ctx context.Context, c *talos.Client) ([]RouteStatus, error) {
 		spec := r.TypedSpec()
 		results = append(results, RouteStatus{
 			NodeHostname: nodeAddr,
-			Destination:  spec.Destination.String(),
-			Gateway:      spec.Gateway.String(),
+			Destination:  prefixString(spec.Destination),
+			Gateway:      addrString(spec.Gateway),
 			Interface:    spec.OutLinkName,
 			Metric:       spec.Priority,
 		})
@@ -168,4 +169,18 @@ func ListDNSUpstreams(ctx context.Context, c *talos.Client) ([]DNSUpstream, erro
 	}
 
 	return results, nil
+}
+
+func prefixString(p netip.Prefix) string {
+	if !p.IsValid() {
+		return ""
+	}
+	return p.String()
+}
+
+func addrString(a netip.Addr) string {
+	if !a.IsValid() {
+		return ""
+	}
+	return a.String()
 }
