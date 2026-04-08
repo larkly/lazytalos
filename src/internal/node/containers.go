@@ -31,7 +31,7 @@ func ListContainers(ctx context.Context, c *talos.Client) ([]Container, error) {
 		return nil, nil
 	}
 
-	targets := allNodeAddresses(ctx, c)
+	targets, resolve := nodeTargets(ctx, c)
 	nodeCtx := talosclient.WithNodes(ctx, targets...)
 	var containers []Container
 	for _, ns := range []string{"system", "k8s.io"} {
@@ -43,7 +43,7 @@ func ListContainers(ctx context.Context, c *talos.Client) ([]Container, error) {
 			if nodeMsg.GetMetadata() == nil {
 				continue
 			}
-			hostname := nodeMsg.GetMetadata().GetHostname()
+			hostname := resolve(nodeMsg.GetMetadata().GetHostname())
 			if hostname == "" {
 				continue
 			}
@@ -69,20 +69,31 @@ func ListContainers(ctx context.Context, c *talos.Client) ([]Container, error) {
 	return containers, nil
 }
 
-func allNodeAddresses(ctx context.Context, c *talos.Client) []string {
+func nodeTargets(ctx context.Context, c *talos.Client) (addrs []string, resolveHostname func(string) string) {
+	identity := func(s string) string { return s }
 	members, err := cluster.GetMembers(ctx, c)
-	if err == nil && len(members) > 0 {
-		var addrs []string
-		for _, m := range members {
-			if len(m.Addresses) > 0 {
-				addrs = append(addrs, m.Addresses[0])
-			}
+	if err != nil || len(members) == 0 {
+		return c.Endpoints, identity
+	}
+	addrToHost := make(map[string]string)
+	for _, m := range members {
+		for _, a := range m.Addresses {
+			addrToHost[a] = m.Hostname
 		}
-		if len(addrs) > 0 {
-			return addrs
+		addrToHost[m.Hostname] = m.Hostname
+		if len(m.Addresses) > 0 {
+			addrs = append(addrs, m.Addresses[0])
 		}
 	}
-	return c.Endpoints
+	if len(addrs) == 0 {
+		return c.Endpoints, identity
+	}
+	return addrs, func(s string) string {
+		if h, ok := addrToHost[s]; ok {
+			return h
+		}
+		return s
+	}
 }
 
 // shortImage extracts the last path segment from a full image reference and

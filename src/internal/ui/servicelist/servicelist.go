@@ -427,7 +427,7 @@ func (m Model) fetchServices() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		targets := allNodeAddresses(ctx, client)
+		targets, resolve := nodeTargets(ctx, client)
 		nodeCtx := talosclient.WithNodes(ctx, targets...)
 		resp, err := client.C.ServiceList(nodeCtx)
 		if err != nil {
@@ -439,7 +439,7 @@ func (m Model) fetchServices() tea.Cmd {
 			if nodeMsg.GetMetadata() == nil {
 				continue
 			}
-			hostname := nodeMsg.GetMetadata().GetHostname()
+			hostname := resolve(nodeMsg.GetMetadata().GetHostname())
 			if hostname == "" {
 				continue
 			}
@@ -510,20 +510,31 @@ func BuildRows(byNode map[string][]ServiceListRow) []ServiceListRow {
 	return rows
 }
 
-func allNodeAddresses(ctx context.Context, client *talos.Client) []string {
+func nodeTargets(ctx context.Context, client *talos.Client) (addrs []string, resolveHostname func(string) string) {
+	identity := func(s string) string { return s }
 	members, err := cluster.GetMembers(ctx, client)
-	if err == nil && len(members) > 0 {
-		var addrs []string
-		for _, m := range members {
-			if len(m.Addresses) > 0 {
-				addrs = append(addrs, m.Addresses[0])
-			}
+	if err != nil || len(members) == 0 {
+		return client.Endpoints, identity
+	}
+	addrToHost := make(map[string]string)
+	for _, m := range members {
+		for _, a := range m.Addresses {
+			addrToHost[a] = m.Hostname
 		}
-		if len(addrs) > 0 {
-			return addrs
+		addrToHost[m.Hostname] = m.Hostname
+		if len(m.Addresses) > 0 {
+			addrs = append(addrs, m.Addresses[0])
 		}
 	}
-	return client.Endpoints
+	if len(addrs) == 0 {
+		return client.Endpoints, identity
+	}
+	return addrs, func(s string) string {
+		if h, ok := addrToHost[s]; ok {
+			return h
+		}
+		return s
+	}
 }
 
 func truncate(s string, maxLen int) string {

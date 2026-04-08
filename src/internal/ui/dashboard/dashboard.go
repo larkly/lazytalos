@@ -307,7 +307,7 @@ func (m Model) fetchServices() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		targets := allNodeAddresses(ctx, client)
+		targets, resolve := nodeTargets(ctx, client)
 		nodeCtx := talosclient.WithNodes(ctx, targets...)
 		resp, err := client.C.ServiceList(nodeCtx)
 		if err != nil {
@@ -319,7 +319,7 @@ func (m Model) fetchServices() tea.Cmd {
 			if nodeMsg.GetMetadata() == nil {
 				continue
 			}
-			hostname := nodeMsg.GetMetadata().GetHostname()
+			hostname := resolve(nodeMsg.GetMetadata().GetHostname())
 			if hostname == "" {
 				continue
 			}
@@ -356,7 +356,7 @@ func (m Model) fetchMemory() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		targets := allNodeAddresses(ctx, client)
+		targets, resolve := nodeTargets(ctx, client)
 		nodeCtx := talosclient.WithNodes(ctx, targets...)
 		resp, err := client.C.Memory(nodeCtx)
 		if err != nil {
@@ -368,7 +368,7 @@ func (m Model) fetchMemory() tea.Cmd {
 			if nodeMsg.GetMetadata() == nil || nodeMsg.GetMeminfo() == nil {
 				continue
 			}
-			hostname := nodeMsg.GetMetadata().GetHostname()
+			hostname := resolve(nodeMsg.GetMetadata().GetHostname())
 			if hostname == "" {
 				continue
 			}
@@ -486,22 +486,37 @@ func (m Model) fetchDiagnostics() tea.Cmd {
 	}
 }
 
-// allNodeAddresses returns addresses for all cluster nodes by querying
-// cluster members. Falls back to client.Endpoints if discovery fails.
-func allNodeAddresses(ctx context.Context, client *talos.Client) []string {
+// nodeTargets discovers all cluster nodes and returns their addresses plus
+// a mapping from any address/IP back to the canonical hostname.
+// The Talos API returns IPs (not hostnames) in response metadata, so callers
+// must use this map to resolve response hostnames to member hostnames.
+func nodeTargets(ctx context.Context, client *talos.Client) (addrs []string, resolveHostname func(string) string) {
+	identity := func(s string) string { return s }
 	members, err := cluster.GetMembers(ctx, client)
-	if err == nil && len(members) > 0 {
-		var addrs []string
-		for _, m := range members {
-			if len(m.Addresses) > 0 {
-				addrs = append(addrs, m.Addresses[0])
-			}
+	if err != nil || len(members) == 0 {
+		return client.Endpoints, identity
+	}
+
+	addrToHost := make(map[string]string)
+	for _, m := range members {
+		for _, a := range m.Addresses {
+			addrToHost[a] = m.Hostname
 		}
-		if len(addrs) > 0 {
-			return addrs
+		// Also map hostname to itself
+		addrToHost[m.Hostname] = m.Hostname
+		if len(m.Addresses) > 0 {
+			addrs = append(addrs, m.Addresses[0])
 		}
 	}
-	return client.Endpoints
+	if len(addrs) == 0 {
+		return client.Endpoints, identity
+	}
+	return addrs, func(s string) string {
+		if h, ok := addrToHost[s]; ok {
+			return h
+		}
+		return s
+	}
 }
 
 // --- Rendering helpers ---
