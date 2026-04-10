@@ -5,6 +5,7 @@ import (
 	"context"
 	"regexp"
 	"sort"
+	"sync"
 
 	"github.com/cosi-project/runtime/pkg/resource"
 	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
@@ -16,7 +17,10 @@ import (
 
 // lastKnownNodes caches node info by address so that when a node leaves
 // the cluster (shut down), we can still display its hostname and type.
-var lastKnownNodes = make(map[string]NodeInfo)
+var (
+	lastKnownNodes  = make(map[string]NodeInfo)
+	lastKnownNodesMu sync.Mutex
+)
 
 // NodeInfo describes a single cluster member.
 type NodeInfo struct {
@@ -125,6 +129,7 @@ func GetMembers(ctx context.Context, c *talos.Client) ([]NodeInfo, error) {
 
 	// Cache live node info by address for future lookups
 	knownAddrs := make(map[string]bool)
+	lastKnownNodesMu.Lock()
 	for _, n := range nodes {
 		for _, a := range n.Addresses {
 			knownAddrs[a] = true
@@ -152,6 +157,7 @@ func GetMembers(ctx context.Context, c *talos.Client) ([]NodeInfo, error) {
 			Healthy:     false,
 		})
 	}
+	lastKnownNodesMu.Unlock()
 
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i].Hostname < nodes[j].Hostname
