@@ -84,9 +84,9 @@ func TestShortenHostname(t *testing.T) {
 		{"single", "single"},
 	}
 	for _, tt := range tests {
-		got := shortenHostname(tt.input)
+		got := shared.ShortenHostname(tt.input)
 		if got != tt.want {
-			t.Errorf("shortenHostname(%q) = %q, want %q", tt.input, got, tt.want)
+			t.Errorf("shared.ShortenHostname(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }

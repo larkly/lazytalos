@@ -429,7 +429,7 @@ func (m Model) viewList() string {
 		}
 
 		// Build plain row for alignment, then apply styling
-		nameStr := shared.Truncate(n.Hostname, nameW)
+		nameStr := shared.Truncate(shared.ShortenHostname(n.Hostname), nameW)
 		row := fmt.Sprintf("%-*s %-14s %-10s %s %-6s",
 			nameW, nameStr,
 			typeStr,
@@ -475,7 +475,7 @@ func (m Model) viewDetail() string {
 	n := m.filtered[m.cursor]
 	var lines []string
 
-	lines = append(lines, shared.StyleHeader.Render(fmt.Sprintf("  Node: %s", n.Hostname)))
+	lines = append(lines, shared.StyleHeader.Render(fmt.Sprintf("  Node: %s", shared.ShortenHostname(n.Hostname))))
 	lines = append(lines, "")
 	lines = append(lines, fmt.Sprintf("  %-20s %s", shared.StyleLabel.Render("Type:"), n.MachineType))
 	lines = append(lines, fmt.Sprintf("  %-20s %s", shared.StyleLabel.Render("Talos Version:"), n.TalosVersion))

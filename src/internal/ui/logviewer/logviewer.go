@@ -107,7 +107,7 @@ func (m *Model) SetNodesWithAddrs(hostnames []string, addrs map[string]string) {
 	m.nodeAddrs = addrs
 	m.nodeDisplayNames = make(map[string]string, len(hostnames)*2)
 	for _, h := range hostnames {
-		short := shortenHostname(h)
+		short := shared.ShortenHostname(h)
 		m.nodeDisplayNames[h] = short
 		// Also map the API address back to the short name so log lines
 		// (which carry the address as Node) resolve correctly.
@@ -134,21 +134,7 @@ func (m Model) nodeDisplay(node string) string {
 	if strings.Contains(node, ":") {
 		return node
 	}
-	return shortenHostname(node)
-}
-
-// shortenHostname extracts the last two segments of a hostname.
-// e.g. "tnn3-demo-cp-1.novalocal" -> "cp-1"
-func shortenHostname(hostname string) string {
-	// Strip domain suffix
-	if idx := strings.Index(hostname, "."); idx > 0 {
-		hostname = hostname[:idx]
-	}
-	parts := strings.Split(hostname, "-")
-	if len(parts) >= 2 {
-		return strings.Join(parts[len(parts)-2:], "-")
-	}
-	return hostname
+	return shared.ShortenHostname(node)
 }
 
 // PreSelectContainer is a stub that will pre-select the given node and container

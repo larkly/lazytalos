@@ -223,7 +223,7 @@ func (m Model) renderAddresses(maxLines int) string {
 	for i := visibleStart; i < visibleEnd; i++ {
 		a := m.addresses[i]
 		row := fmt.Sprintf("  %-24s %-12s %-22s %-10s %-12s",
-			shared.Truncate(a.NodeHostname, 24),
+			shared.Truncate(shared.ShortenHostname(a.NodeHostname), 24),
 			shared.Truncate(a.Interface, 12),
 			shared.Truncate(a.Address, 22),
 			shared.Truncate(a.Scope, 10),
@@ -252,7 +252,7 @@ func (m Model) renderRoutes(maxLines int) string {
 	for i := visibleStart; i < visibleEnd; i++ {
 		r := m.routes[i]
 		row := fmt.Sprintf("  %-24s %-20s %-16s %-12s %-8d",
-			shared.Truncate(r.NodeHostname, 24),
+			shared.Truncate(shared.ShortenHostname(r.NodeHostname), 24),
 			shared.Truncate(r.Destination, 20),
 			shared.Truncate(r.Gateway, 16),
 			shared.Truncate(r.Interface, 12),
@@ -281,7 +281,7 @@ func (m Model) renderDNS(maxLines int) string {
 	for i := visibleStart; i < visibleEnd; i++ {
 		d := m.dnsUpstreams[i]
 		row := fmt.Sprintf("  %-24s %-32s",
-			shared.Truncate(d.NodeHostname, 24),
+			shared.Truncate(shared.ShortenHostname(d.NodeHostname), 24),
 			shared.Truncate(d.Address, 32),
 		)
 		if i == m.cursor {

@@ -195,7 +195,7 @@ func (m Model) viewMembers() string {
 
 		row := fmt.Sprintf("  %-*s %-*s %-*s %-*s %s",
 			idW, shared.Truncate(memberIDHex, idW),
-			hostW, shared.Truncate(mem.Hostname, hostW),
+			hostW, shared.Truncate(shared.ShortenHostname(mem.Hostname), hostW),
 			peerW, shared.Truncate(peerAddr, peerW),
 			clientW, shared.Truncate(clientAddr, clientW),
 			leader,

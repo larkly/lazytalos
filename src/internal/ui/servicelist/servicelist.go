@@ -302,7 +302,7 @@ func (m Model) viewList() string {
 
 		// Group header
 		if m.groupByNode && r.Node != lastNode {
-			lines = append(lines, shared.StyleHeader.Render(fmt.Sprintf("  --- %s ---", r.Node)))
+			lines = append(lines, shared.StyleHeader.Render(fmt.Sprintf("  --- %s ---", shared.ShortenHostname(r.Node))))
 			lastNode = r.Node
 		}
 
@@ -334,7 +334,7 @@ func (m Model) viewList() string {
 			lastEvent = lastEvent[:39] + "\u2026"
 		}
 
-		nodeDisplay := r.Node
+		nodeDisplay := shared.ShortenHostname(r.Node)
 		if m.groupByNode {
 			nodeDisplay = "" // already shown in group header
 		}
@@ -362,10 +362,10 @@ func (m Model) viewDetail() string {
 	r := m.filtered[m.cursor]
 	var lines []string
 
-	lines = append(lines, shared.StyleHeader.Render(fmt.Sprintf("  Service: %s on %s", r.ServiceID, r.Node)))
+	lines = append(lines, shared.StyleHeader.Render(fmt.Sprintf("  Service: %s on %s", r.ServiceID, shared.ShortenHostname(r.Node))))
 	lines = append(lines, "")
 	lines = append(lines, fmt.Sprintf("  %-16s %s", shared.StyleLabel.Render("Service:"), r.ServiceID))
-	lines = append(lines, fmt.Sprintf("  %-16s %s", shared.StyleLabel.Render("Node:"), r.Node))
+	lines = append(lines, fmt.Sprintf("  %-16s %s", shared.StyleLabel.Render("Node:"), shared.ShortenHostname(r.Node)))
 	lines = append(lines, fmt.Sprintf("  %-16s %s", shared.StyleLabel.Render("State:"), r.State))
 	lines = append(lines, fmt.Sprintf("  %-16s %s", shared.StyleLabel.Render("Health:"), r.Health))
 	lines = append(lines, fmt.Sprintf("  %-16s %s", shared.StyleLabel.Render("Last Change:"), r.LastChange))

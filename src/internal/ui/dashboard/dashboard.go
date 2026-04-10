@@ -406,7 +406,7 @@ func (m Model) fetchEvents() tea.Cmd {
 				continue
 			}
 
-			node := shortenHostname(ev.Node)
+			node := shared.ShortenHostname(ev.Node)
 			typeName := ev.TypeURL
 			if idx := strings.LastIndex(typeName, "."); idx >= 0 {
 				typeName = typeName[idx+1:]
@@ -637,7 +637,7 @@ func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serv
 		}
 
 		row := fmt.Sprintf("%-14s %s %s %s %s%s",
-			shared.Truncate(shortenHostname(n.Hostname), 14),
+			shared.Truncate(shared.ShortenHostname(n.Hostname), 14),
 			typeStr,
 			healthStyle.Render(healthIcon),
 			cpuStr,
@@ -720,7 +720,7 @@ func RenderServiceMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]s
 
 	shortNames := make([]string, len(nodes))
 	for i, n := range nodes {
-		shortNames[i] = shortenHostname(n.Hostname)
+		shortNames[i] = shared.ShortenHostname(n.Hostname)
 	}
 
 	nodeColWidth := 8
@@ -785,7 +785,7 @@ func (m Model) renderDiagnostics(maxLines int) string {
 		if i+2 >= maxLines {
 			break
 		}
-		node := shortenHostname(d.NodeHostname)
+		node := shared.ShortenHostname(d.NodeHostname)
 		style := shared.StyleWarning
 		icon := shared.StatusIcon("Degraded")
 		if d.Severity == "error" {
@@ -880,15 +880,6 @@ func formatUptime(d time.Duration) string {
 	}
 	mins := int(d.Minutes()) % 60
 	return fmt.Sprintf("%dh%dm", hours, mins)
-}
-
-func shortenHostname(hostname string) string {
-	// Try to shorten: "my-cluster-cp-1" -> "cp-1"
-	parts := strings.Split(hostname, "-")
-	if len(parts) >= 2 {
-		return strings.Join(parts[len(parts)-2:], "-")
-	}
-	return hostname
 }
 
 func nodeColorFor(hostname string) color.Color {

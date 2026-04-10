@@ -364,7 +364,7 @@ func (m Model) viewList() string {
 
 		row := fmt.Sprintf("%s %-*s %-*s %-*s %-*s %-*s %-*s",
 			cursor,
-			nodeW, shared.Truncate(c.NodeHostname, nodeW),
+			nodeW, shared.Truncate(shared.ShortenHostname(c.NodeHostname), nodeW),
 			nsW, shared.Truncate(c.Namespace, nsW),
 			nameW, shared.Truncate(c.Name, nameW),
 			imageW, shared.Truncate(c.Image, imageW),
@@ -383,7 +383,7 @@ func (m Model) viewDetail() string {
 
 	lines = append(lines, shared.StyleHeader.Render(fmt.Sprintf("  Container: %s", c.Name)))
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("  %s %s", shared.StyleLabel.Render("Node:"), shared.StyleValue.Render(c.NodeHostname)))
+	lines = append(lines, fmt.Sprintf("  %s %s", shared.StyleLabel.Render("Node:"), shared.StyleValue.Render(shared.ShortenHostname(c.NodeHostname))))
 	lines = append(lines, fmt.Sprintf("  %s %s", shared.StyleLabel.Render("Namespace:"), shared.StyleValue.Render(c.Namespace)))
 	lines = append(lines, fmt.Sprintf("  %s %s", shared.StyleLabel.Render("Name:"), shared.StyleValue.Render(c.Name)))
 	lines = append(lines, fmt.Sprintf("  %s %s", shared.StyleLabel.Render("Image:"), shared.StyleValue.Render(c.FullImage)))
