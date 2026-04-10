@@ -14,6 +14,10 @@ import (
 	"github.com/larkly/lazytalos/internal/talos"
 )
 
+// lastKnownNodes caches node info by address so that when a node leaves
+// the cluster (shut down), we can still display its hostname and type.
+var lastKnownNodes = make(map[string]NodeInfo)
+
 // NodeInfo describes a single cluster member.
 type NodeInfo struct {
 	Hostname     string
@@ -119,21 +123,30 @@ func GetMembers(ctx context.Context, c *talos.Client) ([]NodeInfo, error) {
 		nodes = append(nodes, node)
 	}
 
-	// Include configured nodes (from talosconfig) that are not in the member
-	// list — these are nodes that have been shut down or removed from the
-	// cluster but still appear in the operator's config.
+	// Cache live node info by address for future lookups
 	knownAddrs := make(map[string]bool)
 	for _, n := range nodes {
 		for _, a := range n.Addresses {
 			knownAddrs[a] = true
+			lastKnownNodes[a] = n
 		}
 	}
+
+	// Include configured nodes (from talosconfig) that are not in the member
+	// list — these are nodes that have been shut down or removed from the
+	// cluster but still appear in the operator's config.
 	for _, cfgNode := range c.Nodes {
 		if knownAddrs[cfgNode] {
 			continue
 		}
+		// Use cached info if available (preserves hostname/type from when node was alive)
+		if cached, ok := lastKnownNodes[cfgNode]; ok {
+			cached.Healthy = false
+			nodes = append(nodes, cached)
+			continue
+		}
 		nodes = append(nodes, NodeInfo{
-			Hostname:    cfgNode, // just the address — no hostname known
+			Hostname:    cfgNode,
 			Addresses:   []string{cfgNode},
 			MachineType: "unknown",
 			Healthy:     false,
