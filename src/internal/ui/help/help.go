@@ -171,7 +171,8 @@ var allSections = []helpSection{
 		{"Esc", "Back / close"},
 	}},
 	{title: "DASHBOARD", items: []helpItem{
-		{"↑ / ↓", "Scroll events"},
+		{"Enter", "Expand/collapse node health"},
+		{"↑ / ↓", "Scroll events / nodes"},
 		{"F", "Toggle events follow"},
 	}},
 	{title: "NODES", items: []helpItem{

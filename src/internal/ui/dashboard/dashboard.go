@@ -94,6 +94,8 @@ type Model struct {
 	lastRefresh     time.Time
 	eventScroll     int
 	followEvents    bool
+	nodeExpanded    bool
+	nodeScroll      int
 }
 
 // New creates a new dashboard model.
@@ -119,16 +121,57 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
+		case key.Matches(msg, shared.Keys.Enter):
+			m.nodeExpanded = !m.nodeExpanded
+			m.nodeScroll = 0
+		case key.Matches(msg, shared.Keys.Back):
+			if m.nodeExpanded {
+				m.nodeExpanded = false
+			}
 		case key.Matches(msg, shared.Keys.LogFollow):
 			m.followEvents = !m.followEvents
 		case key.Matches(msg, shared.Keys.Down):
-			m.eventScroll++
-			m.followEvents = false
-		case key.Matches(msg, shared.Keys.Up):
-			if m.eventScroll > 0 {
-				m.eventScroll--
+			if m.nodeExpanded {
+				maxScroll := len(m.nodes) - (m.height - 4)
+				if maxScroll < 0 {
+					maxScroll = 0
+				}
+				if m.nodeScroll < maxScroll {
+					m.nodeScroll++
+				}
+			} else {
+				m.eventScroll++
+				m.followEvents = false
 			}
-			m.followEvents = false
+		case key.Matches(msg, shared.Keys.Up):
+			if m.nodeExpanded {
+				if m.nodeScroll > 0 {
+					m.nodeScroll--
+				}
+			} else {
+				if m.eventScroll > 0 {
+					m.eventScroll--
+				}
+				m.followEvents = false
+			}
+		case key.Matches(msg, shared.Keys.PageDown):
+			if m.nodeExpanded {
+				m.nodeScroll += m.height - 6
+				maxScroll := len(m.nodes) - (m.height - 4)
+				if maxScroll < 0 {
+					maxScroll = 0
+				}
+				if m.nodeScroll > maxScroll {
+					m.nodeScroll = maxScroll
+				}
+			}
+		case key.Matches(msg, shared.Keys.PageUp):
+			if m.nodeExpanded {
+				m.nodeScroll -= m.height - 6
+				if m.nodeScroll < 0 {
+					m.nodeScroll = 0
+				}
+			}
 		}
 
 	case shared.TickMsg:
@@ -192,6 +235,10 @@ func (m Model) View() string {
 
 	if m.loading && len(m.nodes) == 0 {
 		return shared.StyleMuted.Render("  Loading cluster data...")
+	}
+
+	if m.nodeExpanded {
+		return m.renderNodeExpanded()
 	}
 
 	// Panel border style.
@@ -272,7 +319,10 @@ func (m *Model) SetSize(w, h int) {
 
 // Hints returns status bar hint text.
 func (m Model) Hints() string {
-	return "F:follow events  ↑↓:scroll events  ctrl+r:refresh"
+	if m.nodeExpanded {
+		return "esc:back  ↑↓/pgup/pgdn:scroll nodes"
+	}
+	return "enter:expand nodes  F:follow events  ↑↓:scroll events  ctrl+r:refresh"
 }
 
 // ForceRefresh triggers an immediate data refresh.
@@ -600,8 +650,14 @@ func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serv
 		return strings.Join(lines[:maxLines], "\n")
 	}
 
+	showMax := maxLines - 2 // title + header
+	truncated := len(nodes) > showMax
+	if truncated {
+		showMax-- // reserve a line for the "more" indicator
+	}
+
 	for i, n := range nodes {
-		if i+3 >= maxLines {
+		if i >= showMax {
 			break
 		}
 		typeStr := shared.StyleMuted.Render("Wk")
@@ -653,6 +709,11 @@ func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serv
 		lines = append(lines, row)
 	}
 
+	if truncated {
+		remaining := len(nodes) - showMax
+		lines = append(lines, shared.StyleMuted.Render(fmt.Sprintf("  ... +%d more (enter to expand)", remaining)))
+	}
+
 	for len(lines) < maxLines {
 		lines = append(lines, "")
 	}
@@ -668,6 +729,90 @@ func (m Model) renderNodeHealth(maxLines int) string {
 		barW = 30
 	}
 	return RenderNodeHealth(m.nodes, m.servicesByNode, m.memoryByNode, m.cpuByNode, maxLines, barW)
+}
+
+// renderNodeExpanded renders a full-screen scrollable node list.
+func (m Model) renderNodeExpanded() string {
+	barW := m.width - 50
+	if barW < 10 {
+		barW = 10
+	}
+	if barW > 40 {
+		barW = 40
+	}
+
+	title := shared.StyleTitle.Render("Node Health") + shared.StyleMuted.Render(fmt.Sprintf(" (%d nodes)", len(m.nodes)))
+	header := shared.StyleMuted.Render(fmt.Sprintf("  %-20s %-4s %-3s %-5s %-*s %s",
+		"NODE", "TYPE", shared.StatusIcon("Running"), "CPU", barW+4, "MEMORY", "UPTIME"))
+	hint := shared.StyleMuted.Render("  esc:back  ↑↓/pgup/pgdn:scroll")
+
+	var lines []string
+	lines = append(lines, title)
+	lines = append(lines, header)
+	lines = append(lines, shared.StyleMuted.Render(strings.Repeat("─", m.width)))
+
+	visibleRows := m.height - 4 // title + header + separator + hint
+	endIdx := m.nodeScroll + visibleRows
+	if endIdx > len(m.nodes) {
+		endIdx = len(m.nodes)
+	}
+
+	for i := m.nodeScroll; i < endIdx; i++ {
+		n := m.nodes[i]
+		typeStr := shared.StyleMuted.Render("Wk")
+		if n.IsControlPlane() {
+			typeStr = lipgloss.NewStyle().Foreground(shared.ColorPrimary).Render("CP")
+		}
+
+		healthIcon := shared.StatusIcon("Running")
+		healthStyle := shared.StyleSuccess
+		if svcs, ok := m.servicesByNode[n.Hostname]; ok {
+			for _, s := range svcs {
+				if s.Health == "Failed" {
+					healthIcon = shared.StatusIcon("Failed")
+					healthStyle = shared.StyleError
+					break
+				}
+			}
+		}
+
+		cpuStr := shared.StyleMuted.Render("  -- ")
+		if cs, ok := m.cpuByNode[n.Hostname]; ok {
+			cpuStr = fmt.Sprintf("%3.0f%%", cs.UsagePercent*100)
+		}
+
+		memBar := shared.StyleMuted.Render(" N/A")
+		if mem, ok := m.memoryByNode[n.Hostname]; ok && mem.TotalKB > 0 {
+			used := mem.TotalKB - mem.AvailableKB
+			pct := float64(used) / float64(mem.TotalKB)
+			memBar = renderMemBar(pct, barW)
+		}
+
+		uptimeStr := ""
+		if cs, ok := m.cpuByNode[n.Hostname]; ok && !cs.BootTime.IsZero() {
+			uptimeStr = formatUptime(time.Since(cs.BootTime))
+		}
+
+		row := fmt.Sprintf("  %-20s %s  %s %s  %s  %s",
+			shared.ShortenHostname(n.Hostname),
+			typeStr,
+			healthStyle.Render(healthIcon),
+			cpuStr,
+			memBar,
+			uptimeStr,
+		)
+		lines = append(lines, row)
+	}
+
+	for len(lines) < m.height-1 {
+		lines = append(lines, "")
+	}
+	lines = append(lines, hint)
+
+	if len(lines) > m.height {
+		lines = lines[:m.height]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // renderMemBar creates a block-character memory bar like "62% ████████░░░░"
