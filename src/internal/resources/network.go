@@ -52,7 +52,7 @@ func ListAddresses(ctx context.Context, c *talos.Client) ([]AddressStatus, error
 
 	var results []AddressStatus
 
-	err := listPerNode(ctx, c, md, func(nodeAddr string, item resource.Resource) {
+	err := listAllNodes(ctx, c, md, func(nodeAddr string, item resource.Resource) {
 		r, ok := item.(*networkres.AddressStatus)
 		if !ok {
 			shared.Debugf("[resources] unexpected AddressStatus type: %T", item)
@@ -83,7 +83,7 @@ func ListRoutes(ctx context.Context, c *talos.Client) ([]RouteStatus, error) {
 
 	var results []RouteStatus
 
-	err := listPerNode(ctx, c, md, func(nodeAddr string, item resource.Resource) {
+	err := listAllNodes(ctx, c, md, func(nodeAddr string, item resource.Resource) {
 		r, ok := item.(*networkres.RouteStatus)
 		if !ok {
 			shared.Debugf("[resources] unexpected RouteStatus type: %T", item)
@@ -114,7 +114,7 @@ func ListHostnames(ctx context.Context, c *talos.Client) ([]HostnameStatus, erro
 
 	var results []HostnameStatus
 
-	err := listPerNode(ctx, c, md, func(nodeAddr string, item resource.Resource) {
+	err := listAllNodes(ctx, c, md, func(nodeAddr string, item resource.Resource) {
 		r, ok := item.(*networkres.HostnameStatus)
 		if !ok {
 			shared.Debugf("[resources] unexpected HostnameStatus type: %T", item)
@@ -142,7 +142,7 @@ func ListDNSUpstreams(ctx context.Context, c *talos.Client) ([]DNSUpstream, erro
 
 	var results []DNSUpstream
 
-	err := listPerNode(ctx, c, md, func(nodeAddr string, item resource.Resource) {
+	err := listAllNodes(ctx, c, md, func(nodeAddr string, item resource.Resource) {
 		r, ok := item.(*networkres.ResolverStatus)
 		if !ok {
 			shared.Debugf("[resources] unexpected ResolverStatus type: %T", item)

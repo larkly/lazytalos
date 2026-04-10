@@ -13,6 +13,9 @@ import (
 // Falls back to client.Endpoints if member discovery fails.
 func NodeTargets(ctx context.Context, client *talos.Client) (addrs []string, resolveHostname func(string) string) {
 	identity := func(s string) string { return s }
+	if client == nil {
+		return nil, identity
+	}
 	members, err := GetMembers(ctx, client)
 	if err != nil || len(members) == 0 {
 		return client.Endpoints, identity

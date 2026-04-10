@@ -31,7 +31,7 @@ func ListDiagnostics(ctx context.Context, c *talos.Client) ([]DiagnosticEntry, e
 
 	var results []DiagnosticEntry
 
-	err := listPerNode(ctx, c, md, func(nodeAddr string, item resource.Resource) {
+	err := listAllNodes(ctx, c, md, func(nodeAddr string, item resource.Resource) {
 		r, ok := item.(*runtimeres.Diagnostic)
 		if !ok {
 			shared.Debugf("[resources] unexpected Diagnostic type: %T", item)

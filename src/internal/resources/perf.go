@@ -29,7 +29,7 @@ func ListCPUStats(ctx context.Context, c *talos.Client) ([]CPUStats, error) {
 
 	var results []CPUStats
 
-	err := listPerNode(ctx, c, md, func(nodeAddr string, item resource.Resource) {
+	err := listAllNodes(ctx, c, md, func(nodeAddr string, item resource.Resource) {
 		r, ok := item.(*perfres.CPU)
 		if !ok {
 			shared.Debugf("[resources] unexpected CPU type: %T", item)

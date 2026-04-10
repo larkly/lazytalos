@@ -50,7 +50,7 @@ func ListBlockDevices(ctx context.Context, c *talos.Client) ([]BlockDevice, erro
 
 	var results []BlockDevice
 
-	err := listPerNode(ctx, c, md, func(nodeAddr string, item resource.Resource) {
+	err := listAllNodes(ctx, c, md, func(nodeAddr string, item resource.Resource) {
 		r, ok := item.(*blockres.Disk)
 		if !ok {
 			shared.Debugf("[resources] unexpected Disk type: %T", item)
@@ -81,7 +81,7 @@ func ListDiscoveredVolumes(ctx context.Context, c *talos.Client) ([]DiscoveredVo
 
 	var results []DiscoveredVolume
 
-	err := listPerNode(ctx, c, md, func(nodeAddr string, item resource.Resource) {
+	err := listAllNodes(ctx, c, md, func(nodeAddr string, item resource.Resource) {
 		r, ok := item.(*blockres.DiscoveredVolume)
 		if !ok {
 			shared.Debugf("[resources] unexpected DiscoveredVolume type: %T", item)
@@ -113,7 +113,7 @@ func ListVolumeStatuses(ctx context.Context, c *talos.Client) ([]VolumeStatus, e
 
 	var results []VolumeStatus
 
-	err := listPerNode(ctx, c, md, func(nodeAddr string, item resource.Resource) {
+	err := listAllNodes(ctx, c, md, func(nodeAddr string, item resource.Resource) {
 		r, ok := item.(*blockres.VolumeStatus)
 		if !ok {
 			shared.Debugf("[resources] unexpected VolumeStatus type: %T", item)

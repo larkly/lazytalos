@@ -18,16 +18,27 @@ type NodeResource[T any] struct {
 	Resource     T
 }
 
-// listPerNode iterates over all configured endpoints, queries COSI for the given
-// resource metadata kind from each node individually, and calls fn for each
-// item.  fn receives the node address (used as a stand-in for the hostname when
-// the caller hasn't resolved it yet) and the raw resource.Resource.
+// listPerNode queries COSI for the given resource metadata from each target
+// node individually, calling fn for each item. fn receives the node address
+// and the raw resource.
 //
-// Errors from individual nodes are collected and returned only if every node
-// fails; partial results from healthy nodes are always included.
+// targets defaults to c.Endpoints when nil. Callers that need all cluster
+// nodes (not just endpoints) should pass addresses from cluster.NodeTargets().
+// Note: cluster.GetMembers uses listPerNode with nil targets (endpoints only)
+// to avoid circular dependency, since NodeTargets calls GetMembers.
 func listPerNode(
 	ctx context.Context,
 	c *talos.Client,
+	md resource.Metadata,
+	fn func(nodeAddr string, item resource.Resource),
+) error {
+	return listPerNodeTargets(ctx, c, nil, md, fn)
+}
+
+func listPerNodeTargets(
+	ctx context.Context,
+	c *talos.Client,
+	targets []string,
 	md resource.Metadata,
 	fn func(nodeAddr string, item resource.Resource),
 ) error {
@@ -35,7 +46,9 @@ func listPerNode(
 		return nil
 	}
 
-	targets, resolve := cluster.NodeTargets(ctx, c)
+	if len(targets) == 0 {
+		targets = c.Endpoints
+	}
 
 	var lastErr error
 	successCount := 0
@@ -52,7 +65,7 @@ func listPerNode(
 		successCount++
 
 		for _, item := range list.Items {
-			fn(resolve(target), item)
+			fn(target, item)
 		}
 	}
 
@@ -61,4 +74,20 @@ func listPerNode(
 	}
 
 	return nil
+}
+
+// listAllNodes discovers all cluster nodes via NodeTargets, then queries
+// each one for the given COSI resource. The fn callback receives resolved
+// hostnames (not raw IPs). Use this for per-node resources like addresses,
+// routes, storage. Do NOT use for cluster.GetMembers (circular dependency).
+func listAllNodes(
+	ctx context.Context,
+	c *talos.Client,
+	md resource.Metadata,
+	fn func(nodeHostname string, item resource.Resource),
+) error {
+	targets, resolve := cluster.NodeTargets(ctx, c)
+	return listPerNodeTargets(ctx, c, targets, md, func(addr string, item resource.Resource) {
+		fn(resolve(addr), item)
+	})
 }
