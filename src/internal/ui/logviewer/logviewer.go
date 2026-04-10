@@ -105,9 +105,15 @@ func (m *Model) SetNodes(nodes []string) {
 func (m *Model) SetNodesWithAddrs(hostnames []string, addrs map[string]string) {
 	m.nodes = hostnames
 	m.nodeAddrs = addrs
-	m.nodeDisplayNames = make(map[string]string, len(hostnames))
+	m.nodeDisplayNames = make(map[string]string, len(hostnames)*2)
 	for _, h := range hostnames {
-		m.nodeDisplayNames[h] = shortenHostname(h)
+		short := shortenHostname(h)
+		m.nodeDisplayNames[h] = short
+		// Also map the API address back to the short name so log lines
+		// (which carry the address as Node) resolve correctly.
+		if addr, ok := addrs[h]; ok {
+			m.nodeDisplayNames[addr] = short
+		}
 	}
 }
 
@@ -123,6 +129,10 @@ func (m Model) nodeTarget(node string) string {
 func (m Model) nodeDisplay(node string) string {
 	if dn, ok := m.nodeDisplayNames[node]; ok {
 		return dn
+	}
+	// Don't mangle IPv6 addresses
+	if strings.Contains(node, ":") {
+		return node
 	}
 	return shortenHostname(node)
 }
