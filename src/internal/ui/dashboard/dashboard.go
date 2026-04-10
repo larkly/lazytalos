@@ -207,12 +207,13 @@ func (m Model) View() string {
 	fullW := m.width
 
 	// --- Top row: Cluster Status (left) + Node Health (right) ---
-	topInnerH := max(len(m.nodes)+2, 8)
-	if topInnerH > m.height*40/100 {
-		topInnerH = m.height * 40 / 100
+	// Node health needs: title + header + one row per node
+	topInnerH := len(m.nodes) + 3
+	if topInnerH < 8 {
+		topInnerH = 8
 	}
-	if topInnerH < 4 {
-		topInnerH = 4
+	if topInnerH > m.height*50/100 {
+		topInnerH = m.height * 50 / 100
 	}
 
 	statusContent := m.renderClusterStatus(topInnerH)
