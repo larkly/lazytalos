@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/cosi-project/runtime/pkg/resource"
+	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
 	clusterres "github.com/siderolabs/talos/pkg/machinery/resources/cluster"
 
 	"github.com/larkly/lazytalos/internal/shared"
@@ -58,7 +59,14 @@ func GetMembers(ctx context.Context, c *talos.Client) ([]NodeInfo, error) {
 		resource.VersionUndefined,
 	)
 
-	list, err := c.C.COSI.List(ctx, memberKind)
+	// Target the first endpoint explicitly — member resources are replicated
+	// across all nodes so any CP endpoint has the full list. Avoids hitting
+	// unreachable nodes from the talosconfig Nodes list.
+	queryCtx := ctx
+	if len(c.Endpoints) > 0 {
+		queryCtx = talosclient.WithNode(ctx, c.Endpoints[0])
+	}
+	list, err := c.C.COSI.List(queryCtx, memberKind)
 	if err != nil {
 		shared.Debugf("[cluster] COSI List members error: %v", err)
 		return nil, err

@@ -96,9 +96,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.fetchMembers()
 
 	case membersLoadedMsg:
-		if msg.err != nil {
+		if msg.err != nil && len(msg.nodes) == 0 {
 			m.err = msg.err
 		} else {
+			m.err = nil
 			m.nodes = msg.nodes
 			m.applyFilter()
 		}
