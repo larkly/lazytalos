@@ -119,6 +119,27 @@ func GetMembers(ctx context.Context, c *talos.Client) ([]NodeInfo, error) {
 		nodes = append(nodes, node)
 	}
 
+	// Include configured nodes (from talosconfig) that are not in the member
+	// list — these are nodes that have been shut down or removed from the
+	// cluster but still appear in the operator's config.
+	knownAddrs := make(map[string]bool)
+	for _, n := range nodes {
+		for _, a := range n.Addresses {
+			knownAddrs[a] = true
+		}
+	}
+	for _, cfgNode := range c.Nodes {
+		if knownAddrs[cfgNode] {
+			continue
+		}
+		nodes = append(nodes, NodeInfo{
+			Hostname:    cfgNode, // just the address — no hostname known
+			Addresses:   []string{cfgNode},
+			MachineType: "unknown",
+			Healthy:     false,
+		})
+	}
+
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i].Hostname < nodes[j].Hostname
 	})

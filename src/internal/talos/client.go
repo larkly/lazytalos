@@ -12,6 +12,7 @@ import (
 type Client struct {
 	ContextName string
 	Endpoints   []string
+	Nodes       []string // configured nodes from talosconfig
 	C           *talosclient.Client
 }
 
@@ -43,14 +44,16 @@ func Connect(ctx context.Context, talosconfig string, contextName string) (*Clie
 		effectiveContext = cfg.Context
 	}
 
-	var endpoints []string
+	var endpoints, nodes []string
 	if ctxCfg, ok := cfg.Contexts[effectiveContext]; ok {
 		endpoints = ctxCfg.Endpoints
+		nodes = ctxCfg.Nodes
 	}
 
 	return &Client{
 		ContextName: effectiveContext,
 		Endpoints:   endpoints,
+		Nodes:       nodes,
 		C:           c,
 	}, nil
 }
