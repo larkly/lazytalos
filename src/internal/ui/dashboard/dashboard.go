@@ -446,6 +446,9 @@ func (m Model) fetchEvents() tea.Cmd {
 			return eventsLoadedMsg{err: err}
 		}
 
+		// Get the remote peer as fallback node identifier
+		defaultNode := talosclient.RemotePeer(stream.Context())
+
 		var events []eventRow
 		for i := 0; i < 40; i++ {
 			raw, err := stream.Recv()
@@ -459,9 +462,8 @@ func (m Model) fetchEvents() tea.Cmd {
 			}
 
 			node := ev.Node
-			// Fallback: try raw metadata hostname if UnmarshalEvent didn't set Node
-			if node == "" && raw.GetMetadata() != nil {
-				node = raw.GetMetadata().GetHostname()
+			if node == "" {
+				node = defaultNode
 			}
 			node = shared.ShortenHostname(node)
 			typeName := ev.TypeURL
@@ -903,12 +905,20 @@ func RenderServiceMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]s
 	}
 	lines := []string{title, shared.StyleMuted.Render(header)}
 
+	hasAnyData := len(servicesByNode) > 0
+
 	for idx, svcName := range allServices {
 		if idx+3 >= maxLines {
 			break
 		}
 		row := fmt.Sprintf("%-14s", svcName)
 		for _, n := range nodes {
+			// Node completely unreachable — show ○ for all services
+			if _, nodeHasData := svcByNodeAndID[n.Hostname]; !nodeHasData && hasAnyData {
+				row += shared.StyleWarning.Render(fmt.Sprintf("%-*s", nodeColWidth, shared.StatusIcon("Stopped")))
+				continue
+			}
+
 			expectedSet := workerSet
 			if n.IsControlPlane() {
 				expectedSet = cpSet
