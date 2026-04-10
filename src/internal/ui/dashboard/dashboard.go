@@ -657,8 +657,11 @@ func (m Model) renderClusterStatus(maxLines int) string {
 // RenderNodeHealth renders the node health panel with memory bars.
 func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serviceRow, memoryByNode map[string]memStats, cpuByNode map[string]resources.CPUStats, maxLines, barWidth int) string {
 	title := shared.StyleHeader.Render("NODE HEALTH")
-	header := shared.StyleMuted.Render(fmt.Sprintf("%-14s %s %s %s %s %s",
-		"NODE", "TY", shared.StatusIcon("Running"), "CPU", "MEM", "UPTIME"))
+	header := shared.StyleMuted.Render(
+		fmt.Sprintf("%-14s", "NODE") + " TY " +
+			shared.StatusIcon("Running") + " " +
+			fmt.Sprintf("%-4s", "CPU") +
+			fmt.Sprintf("%-*s", barWidth, "MEM") + " " + "UP")
 	lines := []string{title, header}
 
 	if len(nodes) == 0 {
@@ -725,14 +728,11 @@ func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serv
 			uptimeStr = shared.StyleMuted.Render(" " + formatUptime(time.Since(cs.BootTime)))
 		}
 
-		row := fmt.Sprintf("%-14s %s %s %s %s%s",
-			shared.Truncate(shared.ShortenHostname(n.Hostname), 14),
-			typeStr,
-			healthStyle.Render(healthIcon),
-			cpuStr,
-			memBar,
-			uptimeStr,
-		)
+		row := fmt.Sprintf("%-14s", shared.Truncate(shared.ShortenHostname(n.Hostname), 14)) +
+			" " + typeStr + " " +
+			healthStyle.Render(healthIcon) + " " +
+			fmt.Sprintf("%-4s", cpuStr) +
+			memBar + " " + uptimeStr
 		lines = append(lines, row)
 	}
 
