@@ -533,7 +533,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case modal.ResetConfirmedMsg:
 		m.activeModal = modalNone
-		return m, m.resetNode(msg.Node, msg.Graceful)
+		addrs := m.resolveToAddresses([]string{msg.Node})
+		target := msg.Node
+		if len(addrs) > 0 {
+			target = addrs[0]
+		}
+		return m, m.resetNode(target, msg.Graceful)
 
 	case modal.ResetCancelledMsg:
 		m.activeModal = modalNone
@@ -566,13 +571,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleConfirmedAction(action modal.ConfirmAction) (Model, tea.Cmd) {
-	nodes := make([]string, len(action.Nodes))
-	for i, n := range action.Nodes {
-		nodes[i] = n.ID
+	// Collect hostnames from confirmed action
+	var hostnames []string
+	for _, n := range action.Nodes {
+		hostnames = append(hostnames, n.ID)
 	}
-	if len(nodes) == 0 && action.Node != "" {
-		nodes = []string{action.Node}
+	if len(hostnames) == 0 && action.Node != "" {
+		hostnames = []string{action.Node}
 	}
+
+	// Resolve hostnames to routable addresses for WithNodes
+	nodes := m.resolveToAddresses(hostnames)
 
 	switch action.Action {
 	case "reboot":
@@ -581,7 +590,12 @@ func (m Model) handleConfirmedAction(action modal.ConfirmAction) (Model, tea.Cmd
 		return m, m.shutdownNodes(nodes)
 	case "restart service":
 		if action.Node != "" && action.ServiceID != "" {
-			return m, m.restartService(action.Node, action.ServiceID)
+			svcAddrs := m.resolveToAddresses([]string{action.Node})
+			svcTarget := action.Node
+			if len(svcAddrs) > 0 {
+				svcTarget = svcAddrs[0]
+			}
+			return m, m.restartService(svcTarget, action.ServiceID)
 		}
 	case "remove etcd member":
 		node := m.etcdMemberNode
@@ -646,4 +660,25 @@ func (m *Model) syncLogViewerNodes() {
 		}
 		m.logViewer.SetNodesWithAddrs(hostnames, addrs)
 	}
+}
+
+// resolveToAddresses maps hostnames to routable addresses using the node list.
+// If a hostname has no known address, it's returned as-is.
+func (m Model) resolveToAddresses(hostnames []string) []string {
+	allNodes := m.nodeList.AllNodes()
+	addrMap := make(map[string]string, len(allNodes))
+	for _, n := range allNodes {
+		if len(n.Addresses) > 0 {
+			addrMap[n.Hostname] = n.Addresses[0]
+		}
+	}
+	result := make([]string, len(hostnames))
+	for i, h := range hostnames {
+		if addr, ok := addrMap[h]; ok {
+			result[i] = addr
+		} else {
+			result[i] = h
+		}
+	}
+	return result
 }
