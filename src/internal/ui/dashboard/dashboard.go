@@ -441,15 +441,16 @@ func (m Model) fetchEvents() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
+		// Build address→hostname resolver for event node attribution
+		_, resolve := cluster.NodeTargets(ctx, client)
+
 		stream, err := client.C.Events(ctx, talosclient.WithTailEvents(20))
 		if err != nil {
 			return eventsLoadedMsg{err: err}
 		}
 
-		// Get the remote peer as fallback node identifier
-		defaultNode := talosclient.RemotePeer(stream.Context())
-
 		var events []eventRow
+		var lastMsg string
 		for i := 0; i < 40; i++ {
 			raw, err := stream.Recv()
 			if err != nil {
@@ -461,21 +462,29 @@ func (m Model) fetchEvents() tea.Cmd {
 				continue
 			}
 
+			// Resolve node: try metadata hostname, then resolve IP→hostname
 			node := ev.Node
-			if node == "" {
-				node = defaultNode
+			if resolved := resolve(node); resolved != node {
+				node = resolved
 			}
 			node = shared.ShortenHostname(node)
+
 			typeName := ev.TypeURL
 			if idx := strings.LastIndex(typeName, "."); idx >= 0 {
 				typeName = typeName[idx+1:]
 			}
-			// Strip "talos/runtime/" prefix if present
 			if strings.HasPrefix(typeName, "talos/runtime/") {
 				typeName = typeName[len("talos/runtime/"):]
 			}
 
 			message := formatEventPayload(typeName, ev.Payload)
+
+			// Deduplicate consecutive identical events
+			key := node + "|" + message
+			if key == lastMsg {
+				continue
+			}
+			lastMsg = key
 
 			events = append(events, eventRow{
 				Node:    node,
