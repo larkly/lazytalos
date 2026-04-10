@@ -132,6 +132,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 	case shared.TickMsg:
+		m.errs = nil // clear errors each refresh cycle
 		return m, m.ForceRefresh()
 
 	case membersLoadedMsg:
@@ -568,10 +569,12 @@ func (m Model) renderClusterStatus(maxLines int) string {
 		lines = append(lines, fmt.Sprintf("%s  %s", shared.StyleMuted.Render("Updated:"), shared.StyleValue.Render(ago.String()+" ago")))
 	}
 
-	// Error
+	// Errors — summarize to avoid clutter from transient node failures
 	if len(m.errs) > 0 {
-		for _, e := range m.errs {
-			lines = append(lines, shared.StyleError.Render(fmt.Sprintf("Error: %v", e)))
+		if len(m.errs) == 1 {
+			lines = append(lines, shared.StyleWarning.Render(shared.Truncate(fmt.Sprintf("! %v", m.errs[0]), 60)))
+		} else {
+			lines = append(lines, shared.StyleWarning.Render(fmt.Sprintf("! %d errors (node(s) may be unreachable)", len(m.errs))))
 		}
 	}
 
@@ -859,8 +862,14 @@ func (m Model) renderEvents(maxLines int) string {
 }
 
 func (m *Model) appendErr(err error) {
-	// Keep at most 3 errors to avoid clutter
-	if len(m.errs) >= 3 {
+	// Deduplicate by error message prefix (same root cause)
+	msg := err.Error()
+	for _, existing := range m.errs {
+		if existing.Error() == msg {
+			return
+		}
+	}
+	if len(m.errs) >= 5 {
 		m.errs = m.errs[1:]
 	}
 	m.errs = append(m.errs, err)
