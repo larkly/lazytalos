@@ -51,9 +51,10 @@ type Model struct {
 	client *talos.Client
 
 	// Selector state (left pane)
-	nodes          []string
-	nodeAddrs      map[string]string // hostname -> API address for WithNodes
-	services       []string
+	nodes            []string
+	nodeAddrs        map[string]string // hostname -> API address for WithNodes
+	nodeDisplayNames map[string]string // hostname -> short display name
+	services         []string
 	activeNodes    map[string]bool
 	activeServices map[string]bool
 	selectorCol    int  // 0 = nodes, 1 = services
@@ -82,9 +83,10 @@ func New(client *talos.Client, refreshInterval time.Duration) Model {
 	return Model{
 		client:          client,
 		services:        svcs,
-		activeNodes:     make(map[string]bool),
-		nodeAddrs:       make(map[string]string),
-		activeServices:  make(map[string]bool),
+		activeNodes:      make(map[string]bool),
+		nodeAddrs:        make(map[string]string),
+		nodeDisplayNames: make(map[string]string),
+		activeServices:   make(map[string]bool),
 		streams:         make(map[StreamKey]activeStream),
 		maxLines:        MaxLines,
 		follow:          true,
@@ -103,6 +105,10 @@ func (m *Model) SetNodes(nodes []string) {
 func (m *Model) SetNodesWithAddrs(hostnames []string, addrs map[string]string) {
 	m.nodes = hostnames
 	m.nodeAddrs = addrs
+	m.nodeDisplayNames = make(map[string]string, len(hostnames))
+	for _, h := range hostnames {
+		m.nodeDisplayNames[h] = shortenHostname(h)
+	}
 }
 
 // nodeTarget returns the API address to use with WithNodes for a given node name.
@@ -111,6 +117,28 @@ func (m Model) nodeTarget(node string) string {
 		return addr
 	}
 	return node
+}
+
+// nodeDisplay returns a short display name for a node.
+func (m Model) nodeDisplay(node string) string {
+	if dn, ok := m.nodeDisplayNames[node]; ok {
+		return dn
+	}
+	return shortenHostname(node)
+}
+
+// shortenHostname extracts the last two segments of a hostname.
+// e.g. "tnn3-demo-cp-1.novalocal" -> "cp-1"
+func shortenHostname(hostname string) string {
+	// Strip domain suffix
+	if idx := strings.Index(hostname, "."); idx > 0 {
+		hostname = hostname[:idx]
+	}
+	parts := strings.Split(hostname, "-")
+	if len(parts) >= 2 {
+		return strings.Join(parts[len(parts)-2:], "-")
+	}
+	return hostname
 }
 
 // PreSelectContainer is a stub that will pre-select the given node and container
@@ -480,11 +508,11 @@ func (m Model) renderSelector(width int) string {
 		if m.selectorCol == 0 && m.selectorRow == i && m.selectorFocus {
 			cursor = ">"
 		}
-		shortNode := node
-		if len(shortNode) > width-8 {
-			shortNode = shortNode[:width-9] + "\u2026"
+		displayName := m.nodeDisplay(node)
+		if len(displayName) > width-8 {
+			displayName = displayName[:width-9] + "\u2026"
 		}
-		line := fmt.Sprintf(" %s[%s] %s", cursor, check, shortNode)
+		line := fmt.Sprintf(" %s[%s] %s", cursor, check, displayName)
 		lines = append(lines, line)
 	}
 
@@ -544,9 +572,10 @@ func (m Model) renderLogPane(width int) string {
 
 	for i := startIdx; i < len(m.lines) && len(lines) < viewH; i++ {
 		line := m.lines[i]
+		displayNode := m.nodeDisplay(line.Node)
 		nodeColor := nodeColorFor(line.Node)
-		nodeTag := lipgloss.NewStyle().Foreground(nodeColor).Render(fmt.Sprintf("[%-8s]", shared.Truncate(line.Node, 8)))
-		svcTag := shared.StyleMuted.Render(fmt.Sprintf("[%-10s]", shared.Truncate(line.Service, 10)))
+		nodeTag := lipgloss.NewStyle().Foreground(nodeColor).Render(fmt.Sprintf("%-10s", shared.Truncate(displayNode, 10)))
+		svcTag := shared.StyleMuted.Render(fmt.Sprintf("%-10s", shared.Truncate(line.Service, 10)))
 
 		text := line.Text
 		maxTextWidth := width - 22
@@ -554,7 +583,7 @@ func (m Model) renderLogPane(width int) string {
 			text = text[:maxTextWidth]
 		}
 
-		rendered := fmt.Sprintf(" %s%s %s", nodeTag, svcTag, text)
+		rendered := fmt.Sprintf(" %s %s %s", nodeTag, svcTag, text)
 		lines = append(lines, rendered)
 	}
 
