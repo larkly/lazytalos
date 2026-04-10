@@ -587,7 +587,9 @@ func (m Model) renderClusterStatus(maxLines int) string {
 // RenderNodeHealth renders the node health panel with memory bars.
 func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serviceRow, memoryByNode map[string]memStats, cpuByNode map[string]resources.CPUStats, maxLines, barWidth int) string {
 	title := shared.StyleHeader.Render("NODE HEALTH")
-	lines := []string{title}
+	header := shared.StyleMuted.Render(fmt.Sprintf("%-14s %s %s %s %s %s",
+		"NODE", "TY", shared.StatusIcon("Running"), "CPU", "MEM", "UPTIME"))
+	lines := []string{title, header}
 
 	if len(nodes) == 0 {
 		lines = append(lines, shared.StyleMuted.Render("No nodes found"))
@@ -598,7 +600,7 @@ func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serv
 	}
 
 	for i, n := range nodes {
-		if i+2 >= maxLines {
+		if i+3 >= maxLines {
 			break
 		}
 		typeStr := shared.StyleMuted.Render("Wk")
