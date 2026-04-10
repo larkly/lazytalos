@@ -133,3 +133,6 @@ type UpdateAvailableMsg struct {
 
 // YankMsg is sent when text should be copied to the clipboard.
 type YankMsg struct{ Text string }
+
+// ConfigChangedMsg is sent when app settings are changed via the settings overlay.
+type ConfigChangedMsg struct{}

@@ -31,7 +31,12 @@ func (m Model) viewContent() string {
 		return m.help.View()
 	}
 
-	// Config view overlay: third highest priority.
+	// Settings overlay
+	if m.settings.Visible {
+		return m.settings.Render()
+	}
+
+	// Config view overlay
 	if m.configView.IsVisible() {
 		return m.configView.View()
 	}
@@ -106,6 +111,23 @@ func (m Model) viewContent() string {
 		pad := m.width - secondW - verW
 		if pad > 0 {
 			lines[1] = secondLine + strings.Repeat(" ", pad) + versionStr
+		}
+	}
+	if len(lines) > 2 && m.latestVersion != "" {
+		var indicator string
+		if shared.PlainMode {
+			indicator = lipgloss.NewStyle().Foreground(shared.ColorWarning).
+				Render("(update: " + m.latestVersion + ")")
+		} else {
+			indicator = lipgloss.NewStyle().Foreground(shared.ColorWarning).
+				Render("⚡ " + m.latestVersion + " available")
+		}
+		thirdLine := lines[2]
+		thirdW := lipgloss.Width(thirdLine)
+		indW := lipgloss.Width(indicator)
+		pad := m.width - thirdW - indW
+		if pad > 0 {
+			lines[2] = thirdLine + strings.Repeat(" ", pad) + indicator
 		}
 	}
 	content = strings.Join(lines, "\n")

@@ -34,10 +34,8 @@ type serviceRow struct {
 	Health    string
 }
 
-type memStats struct {
-	TotalKB     uint64
-	AvailableKB uint64
-}
+// memStats is a local alias keyed by hostname for dashboard use.
+type memStats = shared.MemStats
 
 type eventRow struct {
 	Node    string
@@ -94,8 +92,6 @@ type Model struct {
 	lastRefresh     time.Time
 	eventScroll     int
 	followEvents    bool
-	nodeExpanded    bool
-	nodeScroll      int
 }
 
 // New creates a new dashboard model.
@@ -121,57 +117,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, shared.Keys.Enter):
-			m.nodeExpanded = !m.nodeExpanded
-			m.nodeScroll = 0
-		case key.Matches(msg, shared.Keys.Back):
-			if m.nodeExpanded {
-				m.nodeExpanded = false
-			}
 		case key.Matches(msg, shared.Keys.LogFollow):
 			m.followEvents = !m.followEvents
 		case key.Matches(msg, shared.Keys.Down):
-			if m.nodeExpanded {
-				maxScroll := len(m.nodes) - (m.height - 4)
-				if maxScroll < 0 {
-					maxScroll = 0
-				}
-				if m.nodeScroll < maxScroll {
-					m.nodeScroll++
-				}
-			} else {
-				m.eventScroll++
-				m.followEvents = false
-			}
+			m.eventScroll++
+			m.followEvents = false
 		case key.Matches(msg, shared.Keys.Up):
-			if m.nodeExpanded {
-				if m.nodeScroll > 0 {
-					m.nodeScroll--
-				}
-			} else {
-				if m.eventScroll > 0 {
-					m.eventScroll--
-				}
-				m.followEvents = false
+			if m.eventScroll > 0 {
+				m.eventScroll--
 			}
-		case key.Matches(msg, shared.Keys.PageDown):
-			if m.nodeExpanded {
-				m.nodeScroll += m.height - 6
-				maxScroll := len(m.nodes) - (m.height - 4)
-				if maxScroll < 0 {
-					maxScroll = 0
-				}
-				if m.nodeScroll > maxScroll {
-					m.nodeScroll = maxScroll
-				}
-			}
-		case key.Matches(msg, shared.Keys.PageUp):
-			if m.nodeExpanded {
-				m.nodeScroll -= m.height - 6
-				if m.nodeScroll < 0 {
-					m.nodeScroll = 0
-				}
-			}
+			m.followEvents = false
 		}
 
 	case shared.TickMsg:
@@ -237,10 +192,6 @@ func (m Model) View() string {
 		return shared.StyleMuted.Render("  Loading cluster data...")
 	}
 
-	if m.nodeExpanded {
-		return m.renderNodeExpanded()
-	}
-
 	// Panel border style.
 	// lipgloss v2: Width() is the TOTAL width including borders.
 	// A rounded border adds 1 col each side = 2 total.
@@ -253,18 +204,23 @@ func (m Model) View() string {
 	rightW := m.width - leftW
 	fullW := m.width
 
-	// --- Top row: Cluster Status (left) + Node Health (right) ---
-	// Node health needs: title + header + one row per node
-	topInnerH := len(m.nodes) + 3
-	if topInnerH < 8 {
-		topInnerH = 8
+	// --- Top row: Cluster Status (left) + Cluster Nodes dot matrix (right) ---
+	// Dot matrix: title + ceil(nodes/dotsPerRow) rows + blank + legend = compact
+	dotsPerRow := (rightW - 6) / 2
+	if dotsPerRow < 4 {
+		dotsPerRow = 4
 	}
-	if topInnerH > m.height*50/100 {
-		topInnerH = m.height * 50 / 100
+	dotRows := (len(m.nodes) + dotsPerRow - 1) / dotsPerRow
+	topInnerH := dotRows + 4 // title + dot rows + blank + legend
+	if topInnerH < 6 {
+		topInnerH = 6
+	}
+	if topInnerH > m.height*35/100 {
+		topInnerH = m.height * 35 / 100
 	}
 
 	statusContent := m.renderClusterStatus(topInnerH)
-	nodeContent := m.renderNodeHealth(topInnerH)
+	nodeContent := m.renderNodeDotMatrix(topInnerH)
 
 	statusPanel := panelBorder.Width(leftW).Height(topInnerH).Render(statusContent)
 	nodePanel := panelBorder.Width(rightW).Height(topInnerH).Render(nodeContent)
@@ -287,7 +243,7 @@ func (m Model) View() string {
 	// --- Bottom row: Diagnostics (left) + Events (right) ---
 	topRowH := lipgloss.Height(topRow)
 	svcPanelH := lipgloss.Height(svcPanel)
-	bottomInnerH := m.height - topRowH - svcPanelH - 2 // -2 for bottom border
+	bottomInnerH := m.height - topRowH - svcPanelH - 3 // -2 for bottom border, -1 for top blank line
 	if bottomInnerH < 3 {
 		bottomInnerH = 3
 	}
@@ -300,8 +256,8 @@ func (m Model) View() string {
 
 	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, diagPanel, eventPanel)
 
-	// Combine all rows
-	full := lipgloss.JoinVertical(lipgloss.Left, topRow, svcPanel, bottomRow)
+	// Combine all rows with a blank first line for the version overlay
+	full := "\n" + lipgloss.JoinVertical(lipgloss.Left, topRow, svcPanel, bottomRow)
 
 	// Truncate to terminal height
 	lines := strings.Split(full, "\n")
@@ -319,10 +275,7 @@ func (m *Model) SetSize(w, h int) {
 
 // Hints returns status bar hint text.
 func (m Model) Hints() string {
-	if m.nodeExpanded {
-		return "esc:back  ↑↓/pgup/pgdn:scroll nodes"
-	}
-	return "enter:expand nodes  F:follow events  ↑↓:scroll events  ctrl+r:refresh"
+	return "F:follow events  ↑↓:scroll events  ctrl+r:refresh"
 }
 
 // ForceRefresh triggers an immediate data refresh.
@@ -407,28 +360,12 @@ func (m Model) fetchMemory() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		targets, resolve := cluster.NodeTargets(ctx, client)
-		nodeCtx := talosclient.WithNodes(ctx, targets...)
-		resp, err := client.C.Memory(nodeCtx)
-
-		byNode := make(map[string]memStats)
-		if resp == nil {
-			return memoryLoadedMsg{memoryByNode: byNode, err: err}
+		stats, err := resources.ListMemStats(ctx, client)
+		byNode := make(map[string]memStats, len(stats))
+		for _, s := range stats {
+			byNode[s.NodeHostname] = s
 		}
-		for _, nodeMsg := range resp.GetMessages() {
-			if nodeMsg.GetMetadata() == nil || nodeMsg.GetMeminfo() == nil {
-				continue
-			}
-			hostname := resolve(nodeMsg.GetMetadata().GetHostname())
-			if hostname == "" {
-				continue
-			}
-			byNode[hostname] = memStats{
-				TotalKB:     nodeMsg.GetMeminfo().GetMemtotal(),
-				AvailableKB: nodeMsg.GetMeminfo().GetMemavailable(),
-			}
-		}
-		return memoryLoadedMsg{memoryByNode: byNode}
+		return memoryLoadedMsg{memoryByNode: byNode, err: err}
 	}
 }
 
@@ -654,15 +591,12 @@ func (m Model) renderClusterStatus(maxLines int) string {
 	return strings.Join(lines[:maxLines], "\n")
 }
 
-// RenderNodeHealth renders the node health panel with memory bars.
-func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serviceRow, memoryByNode map[string]memStats, cpuByNode map[string]resources.CPUStats, maxLines, barWidth int) string {
-	title := shared.StyleHeader.Render("NODE HEALTH")
-	header := shared.StyleMuted.Render(
-		fmt.Sprintf("%-14s", "NODE") + " TY " +
-			shared.StatusIcon("Running") + " " +
-			fmt.Sprintf("%-4s", "CPU") +
-			fmt.Sprintf("%-*s", barWidth, "MEM") + " " + "UP")
-	lines := []string{title, header}
+// RenderNodeDotMatrix renders a compact dot-matrix cluster overview.
+// Each node is a single colored dot indicating its health state.
+func RenderNodeDotMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]serviceRow, memoryByNode map[string]memStats, cpuByNode map[string]resources.CPUStats, maxLines, panelWidth int) string {
+	title := shared.StyleHeader.Render("CLUSTER NODES") +
+		shared.StyleMuted.Render(fmt.Sprintf(" (%d)", len(nodes)))
+	lines := []string{title}
 
 	if len(nodes) == 0 {
 		lines = append(lines, shared.StyleMuted.Render("No nodes found"))
@@ -672,74 +606,66 @@ func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serv
 		return strings.Join(lines[:maxLines], "\n")
 	}
 
-	showMax := maxLines - 2 // title + header
-	truncated := len(nodes) > showMax
-	if truncated {
-		showMax-- // reserve a line for the "more" indicator
-	}
-
-	// If we have service data for any node, nodes without data are unreachable
 	hasAnyData := len(servicesByNode) > 0
 
-	for i, n := range nodes {
-		if i >= showMax {
-			break
-		}
-		typeStr := shared.StyleMuted.Render("Wk")
-		if n.IsControlPlane() {
-			typeStr = lipgloss.NewStyle().Foreground(shared.ColorPrimary).Render("CP")
-		}
+	// Build dot string with wrapping
+	dotsPerRow := (panelWidth - 4) / 2 // each dot is "● " = 2 chars
+	if dotsPerRow < 4 {
+		dotsPerRow = 4
+	}
 
-		// Health icon — check services, but also detect unreachable nodes
-		healthIcon := shared.StatusIcon("Running")
-		healthStyle := shared.StyleSuccess
+	var rowDots []string
+	for i, n := range nodes {
+		icon := "●"
+		style := shared.StyleSuccess
+
 		svcs, hasSvcs := servicesByNode[n.Hostname]
-		if hasSvcs {
+		if !hasSvcs && hasAnyData {
+			// Unreachable
+			icon = "○"
+			style = shared.StyleMuted
+		} else if hasSvcs {
+			// Check for failed services
+			hasFailed := false
 			for _, s := range svcs {
 				if s.Health == "Failed" {
-					healthIcon = shared.StatusIcon("Failed")
-					healthStyle = shared.StyleError
+					hasFailed = true
 					break
 				}
 			}
-		} else if hasAnyData {
-			// Data loaded for other nodes but not this one — unreachable
-			healthIcon = shared.StatusIcon("Stopped")
-			healthStyle = shared.StyleWarning
+			if hasFailed {
+				style = shared.StyleError
+			} else {
+				// Check resource warnings
+				mem, hasMem := memoryByNode[n.Hostname]
+				cpu, hasCPU := cpuByNode[n.Hostname]
+				memPct := 0.0
+				if hasMem && mem.TotalKB > 0 {
+					memPct = float64(mem.TotalKB-mem.AvailableKB) / float64(mem.TotalKB)
+				}
+				if memPct > shared.MemCriticalPct {
+					style = shared.StyleError
+				} else if (hasCPU && cpu.UsagePercent > shared.CPUWarningPct) || memPct > shared.MemWarningPct {
+					style = shared.StyleWarning
+				}
+			}
 		}
 
-		// CPU%
-		cpuStr := shared.StyleMuted.Render(" -- ")
-		if cs, ok := cpuByNode[n.Hostname]; ok {
-			cpuStr = fmt.Sprintf("%2.0f%%", cs.UsagePercent*100)
-		}
+		rowDots = append(rowDots, style.Render(icon))
 
-		// Memory bar
-		memBar := shared.StyleMuted.Render(" N/A")
-		if mem, ok := memoryByNode[n.Hostname]; ok && mem.TotalKB > 0 {
-			used := mem.TotalKB - mem.AvailableKB
-			pct := float64(used) / float64(mem.TotalKB)
-			memBar = renderMemBar(pct, barWidth)
+		if (i+1)%dotsPerRow == 0 || i == len(nodes)-1 {
+			lines = append(lines, strings.Join(rowDots, " "))
+			rowDots = nil
 		}
-
-		// Uptime
-		uptimeStr := ""
-		if cs, ok := cpuByNode[n.Hostname]; ok && !cs.BootTime.IsZero() {
-			uptimeStr = shared.StyleMuted.Render(" " + formatUptime(time.Since(cs.BootTime)))
-		}
-
-		row := fmt.Sprintf("%-14s", shared.Truncate(shared.ShortenHostname(n.Hostname), 14)) +
-			" " + typeStr + " " +
-			healthStyle.Render(healthIcon) + " " +
-			fmt.Sprintf("%-4s", cpuStr) +
-			memBar + " " + uptimeStr
-		lines = append(lines, row)
 	}
 
-	if truncated {
-		remaining := len(nodes) - showMax
-		lines = append(lines, shared.StyleMuted.Render(fmt.Sprintf("  ... +%d more (enter to expand)", remaining)))
-	}
+	// Legend
+	lines = append(lines, "")
+	legend := shared.StyleSuccess.Render("●") + shared.StyleMuted.Render(" ready  ") +
+		shared.StyleWarning.Render("●") + shared.StyleMuted.Render(" warn  ") +
+		shared.StyleError.Render("●") + shared.StyleMuted.Render(" error  ") +
+		shared.StyleMuted.Render("○ offline")
+	lines = append(lines, legend)
 
 	for len(lines) < maxLines {
 		lines = append(lines, "")
@@ -747,133 +673,8 @@ func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serv
 	return strings.Join(lines[:maxLines], "\n")
 }
 
-func (m Model) renderNodeHealth(maxLines int) string {
-	barW := m.width/2 - 30
-	if barW < 8 {
-		barW = 8
-	}
-	if barW > 30 {
-		barW = 30
-	}
-	return RenderNodeHealth(m.nodes, m.servicesByNode, m.memoryByNode, m.cpuByNode, maxLines, barW)
-}
-
-// renderNodeExpanded renders a full-screen scrollable node list.
-func (m Model) renderNodeExpanded() string {
-	barW := m.width - 50
-	if barW < 10 {
-		barW = 10
-	}
-	if barW > 40 {
-		barW = 40
-	}
-
-	title := shared.StyleTitle.Render("Node Health") + shared.StyleMuted.Render(fmt.Sprintf(" (%d nodes)", len(m.nodes)))
-	header := shared.StyleMuted.Render(fmt.Sprintf("  %-20s %-4s %-3s %-5s %-*s %s",
-		"NODE", "TYPE", shared.StatusIcon("Running"), "CPU", barW+4, "MEMORY", "UPTIME"))
-	hint := shared.StyleMuted.Render("  esc:back  ↑↓/pgup/pgdn:scroll")
-
-	var lines []string
-	lines = append(lines, title)
-	lines = append(lines, header)
-	lines = append(lines, shared.StyleMuted.Render(strings.Repeat("─", m.width)))
-
-	visibleRows := m.height - 4 // title + header + separator + hint
-	endIdx := m.nodeScroll + visibleRows
-	if endIdx > len(m.nodes) {
-		endIdx = len(m.nodes)
-	}
-
-	expandHasData := len(m.servicesByNode) > 0
-
-	for i := m.nodeScroll; i < endIdx; i++ {
-		n := m.nodes[i]
-		typeStr := shared.StyleMuted.Render("Wk")
-		if n.IsControlPlane() {
-			typeStr = lipgloss.NewStyle().Foreground(shared.ColorPrimary).Render("CP")
-		}
-
-		healthIcon := shared.StatusIcon("Running")
-		healthStyle := shared.StyleSuccess
-		svcs, hasSvcs := m.servicesByNode[n.Hostname]
-		if hasSvcs {
-			for _, s := range svcs {
-				if s.Health == "Failed" {
-					healthIcon = shared.StatusIcon("Failed")
-					healthStyle = shared.StyleError
-					break
-				}
-			}
-		} else if expandHasData {
-			healthIcon = shared.StatusIcon("Stopped")
-			healthStyle = shared.StyleWarning
-		}
-
-		cpuStr := shared.StyleMuted.Render("  -- ")
-		if cs, ok := m.cpuByNode[n.Hostname]; ok {
-			cpuStr = fmt.Sprintf("%3.0f%%", cs.UsagePercent*100)
-		}
-
-		memBar := shared.StyleMuted.Render(" N/A")
-		if mem, ok := m.memoryByNode[n.Hostname]; ok && mem.TotalKB > 0 {
-			used := mem.TotalKB - mem.AvailableKB
-			pct := float64(used) / float64(mem.TotalKB)
-			memBar = renderMemBar(pct, barW)
-		}
-
-		uptimeStr := ""
-		if cs, ok := m.cpuByNode[n.Hostname]; ok && !cs.BootTime.IsZero() {
-			uptimeStr = formatUptime(time.Since(cs.BootTime))
-		}
-
-		row := fmt.Sprintf("  %-20s %s  %s %s  %s  %s",
-			shared.ShortenHostname(n.Hostname),
-			typeStr,
-			healthStyle.Render(healthIcon),
-			cpuStr,
-			memBar,
-			uptimeStr,
-		)
-		lines = append(lines, row)
-	}
-
-	for len(lines) < m.height-1 {
-		lines = append(lines, "")
-	}
-	lines = append(lines, hint)
-
-	if len(lines) > m.height {
-		lines = lines[:m.height]
-	}
-	return strings.Join(lines, "\n")
-}
-
-// renderMemBar creates a block-character memory bar like "62% ████████░░░░"
-func renderMemBar(pct float64, width int) string {
-	if width < 4 {
-		width = 4
-	}
-	pctStr := fmt.Sprintf("%2.0f%%", pct*100)
-	barW := width - 4 // space for "62% "
-	if barW < 1 {
-		barW = 1
-	}
-	filled := int(pct * float64(barW))
-	if filled > barW {
-		filled = barW
-	}
-	empty := barW - filled
-
-	barStyle := shared.StyleSuccess
-	if pct > 0.8 {
-		barStyle = shared.StyleError
-	} else if pct > 0.6 {
-		barStyle = shared.StyleWarning
-	}
-
-	bar := barStyle.Render(strings.Repeat("█", filled)) +
-		shared.StyleMuted.Render(strings.Repeat("░", empty))
-	return fmt.Sprintf("%s %s", pctStr, bar)
+func (m Model) renderNodeDotMatrix(maxLines int) string {
+	return RenderNodeDotMatrix(m.nodes, m.servicesByNode, m.memoryByNode, m.cpuByNode, maxLines, m.width/2)
 }
 
 // RenderServiceMatrix renders the service status matrix. Exported for testing.
@@ -924,7 +725,7 @@ func RenderServiceMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]s
 		for _, n := range nodes {
 			// Node completely unreachable — show ○ for all services
 			if _, nodeHasData := svcByNodeAndID[n.Hostname]; !nodeHasData && hasAnyData {
-				row += shared.StyleWarning.Render(fmt.Sprintf("%-*s", nodeColWidth, shared.StatusIcon("Stopped")))
+				row += shared.StyleWarning.Render(fmt.Sprintf("%-*s", nodeColWidth, "○"))
 				continue
 			}
 
@@ -940,10 +741,10 @@ func RenderServiceMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]s
 
 			svcMap := svcByNodeAndID[n.Hostname]
 			if svc, ok := svcMap[svcName]; ok {
-				icon := shared.StatusIcon("Running")
+				icon := "●"
 				style := shared.StyleSuccess
 				if svc.State != "Running" || svc.Health == "Failed" {
-					icon = shared.StatusIcon("Failed")
+					icon = "✘"
 					style = shared.StyleError
 				}
 				row += style.Render(fmt.Sprintf("%-*s", nodeColWidth, icon))
@@ -1069,16 +870,6 @@ func (m *Model) clearErr() {
 }
 
 // --- Utility functions ---
-
-func formatUptime(d time.Duration) string {
-	days := int(d.Hours()) / 24
-	hours := int(d.Hours()) % 24
-	if days > 0 {
-		return fmt.Sprintf("%dd%dh", days, hours)
-	}
-	mins := int(d.Minutes()) % 60
-	return fmt.Sprintf("%dh%dm", hours, mins)
-}
 
 func nodeColorFor(hostname string) color.Color {
 	if len(shared.NodeColors) == 0 {

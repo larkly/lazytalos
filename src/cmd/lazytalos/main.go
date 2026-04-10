@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/larkly/lazytalos/internal/app"
+	"github.com/larkly/lazytalos/internal/config"
 	"github.com/larkly/lazytalos/internal/shared"
 )
 
@@ -17,14 +18,15 @@ var version = "dev"
 
 func main() {
 	var (
-		talosconfig   string
-		contextFlag   string
-		refresh       int
-		plain         bool
-		debug         bool
-		showVersion   bool
-		pickContext   bool
-		noUpdateCheck bool
+		talosconfig          string
+		contextFlag          string
+		refresh              int
+		plain                bool
+		debug                bool
+		showVersion          bool
+		pickContext          bool
+		noUpdateCheck        bool
+		updateCheckInterval  int
 	)
 
 	flag.StringVar(&talosconfig, "talosconfig", "", "path to talosconfig (default: $TALOSCONFIG env var, then ~/.talos/config)")
@@ -35,6 +37,7 @@ func main() {
 	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	flag.BoolVar(&pickContext, "pick-context", false, "force showing the context picker even when only one context is configured")
 	flag.BoolVar(&noUpdateCheck, "no-update-check", false, "disable the startup self-update check")
+	flag.IntVar(&updateCheckInterval, "update-check-interval", 24, "hours between update checks (0 = check every launch)")
 	flag.Parse()
 
 	if showVersion {
@@ -61,15 +64,42 @@ func main() {
 		}
 	}
 
-	m := app.New(app.Options{
-		Talosconfig:     talosconfig,
-		Context:         contextFlag,
-		RefreshInterval: time.Duration(refresh) * time.Second,
-		PickContext:     pickContext,
-		Version:         version,
-		Plain:           plain,
-		NoUpdateCheck:   noUpdateCheck,
-	})
+	// Load persisted app config, apply it, then merge CLI flag overrides.
+	appCfg, err := config.Load()
+	if err != nil {
+		shared.Debugf("[main] config load error: %v", err)
+	}
+	config.ApplyAll(appCfg)
+
+	// CLI flags override config file values where explicitly set.
+	if plain {
+		appCfg.General.PlainMode = true
+		config.ApplyGeneral(appCfg.General)
+	}
+	if noUpdateCheck {
+		appCfg.General.CheckForUpdates = false
+	}
+
+	opts := app.Options{
+		Talosconfig:         talosconfig,
+		Context:             contextFlag,
+		RefreshInterval:     time.Duration(appCfg.General.RefreshInterval) * time.Second,
+		PickContext:         appCfg.General.AlwaysPickContext || pickContext,
+		Version:             version,
+		Plain:               appCfg.General.PlainMode,
+		NoUpdateCheck:       !appCfg.General.CheckForUpdates,
+		UpdateCheckInterval: time.Duration(appCfg.General.UpdateCheckInterval) * time.Hour,
+		AppConfig:           &appCfg,
+	}
+	// CLI refresh flag overrides config if not default
+	if refresh != 5 {
+		opts.RefreshInterval = time.Duration(refresh) * time.Second
+	}
+	if updateCheckInterval != 24 {
+		opts.UpdateCheckInterval = time.Duration(updateCheckInterval) * time.Hour
+	}
+
+	m := app.New(opts)
 
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
