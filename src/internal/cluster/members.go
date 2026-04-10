@@ -5,10 +5,8 @@ import (
 	"context"
 	"regexp"
 	"sort"
-	"time"
 
 	"github.com/cosi-project/runtime/pkg/resource"
-	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
 	clusterres "github.com/siderolabs/talos/pkg/machinery/resources/cluster"
 
 	"github.com/larkly/lazytalos/internal/shared"
@@ -100,23 +98,9 @@ func GetMembers(ctx context.Context, c *talos.Client) ([]NodeInfo, error) {
 			MachineType:  machineType,
 			Addresses:    addrs,
 			TalosVersion: ParseTalosVersion(spec.OperatingSystem),
-			Healthy:      true, // updated below via reachability check
+			Healthy:      true, // actual health determined by service data presence
 		}
 		nodes = append(nodes, node)
-	}
-
-	// Quick reachability probe: try Version RPC on each node
-	for i := range nodes {
-		if len(nodes[i].Addresses) == 0 {
-			continue
-		}
-		probeCtx, probeCancel := context.WithTimeout(ctx, 2*time.Second)
-		nodeCtx := talosclient.WithNodes(probeCtx, nodes[i].Addresses[0])
-		_, err := c.C.Version(nodeCtx)
-		probeCancel()
-		if err != nil {
-			nodes[i].Healthy = false
-		}
 	}
 
 	sort.Slice(nodes, func(i, j int) bool {

@@ -361,11 +361,11 @@ func (m Model) fetchServices() tea.Cmd {
 		targets, resolve := cluster.NodeTargets(ctx, client)
 		nodeCtx := talosclient.WithNodes(ctx, targets...)
 		resp, err := client.C.ServiceList(nodeCtx)
-		if err != nil {
-			return servicesLoadedMsg{err: err}
-		}
 
 		byNode := make(map[string][]serviceRow)
+		if resp == nil {
+			return servicesLoadedMsg{servicesByNode: byNode, err: err}
+		}
 		for _, nodeMsg := range resp.GetMessages() {
 			if nodeMsg.GetMetadata() == nil {
 				continue
@@ -410,11 +410,11 @@ func (m Model) fetchMemory() tea.Cmd {
 		targets, resolve := cluster.NodeTargets(ctx, client)
 		nodeCtx := talosclient.WithNodes(ctx, targets...)
 		resp, err := client.C.Memory(nodeCtx)
-		if err != nil {
-			return memoryLoadedMsg{err: err}
-		}
 
 		byNode := make(map[string]memStats)
+		if resp == nil {
+			return memoryLoadedMsg{memoryByNode: byNode, err: err}
+		}
 		for _, nodeMsg := range resp.GetMessages() {
 			if nodeMsg.GetMetadata() == nil || nodeMsg.GetMeminfo() == nil {
 				continue
@@ -458,7 +458,12 @@ func (m Model) fetchEvents() tea.Cmd {
 				continue
 			}
 
-			node := shared.ShortenHostname(ev.Node)
+			node := ev.Node
+			// Fallback: try raw metadata hostname if UnmarshalEvent didn't set Node
+			if node == "" && raw.GetMetadata() != nil {
+				node = raw.GetMetadata().GetHostname()
+			}
+			node = shared.ShortenHostname(node)
 			typeName := ev.TypeURL
 			if idx := strings.LastIndex(typeName, "."); idx >= 0 {
 				typeName = typeName[idx+1:]

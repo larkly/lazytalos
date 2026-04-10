@@ -36,7 +36,7 @@ func ListContainers(ctx context.Context, c *talos.Client) ([]Container, error) {
 	var containers []Container
 	for _, ns := range []string{"system", "k8s.io"} {
 		resp, err := c.C.Containers(nodeCtx, ns, common.ContainerDriver_CONTAINERD)
-		if err != nil {
+		if err != nil || resp == nil {
 			continue
 		}
 		for _, nodeMsg := range resp.GetMessages() {

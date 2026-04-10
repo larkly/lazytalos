@@ -434,11 +434,11 @@ func (m Model) fetchServices() tea.Cmd {
 		targets, resolve := cluster.NodeTargets(ctx, client)
 		nodeCtx := talosclient.WithNodes(ctx, targets...)
 		resp, err := client.C.ServiceList(nodeCtx)
-		if err != nil {
-			return servicesLoadedMsg{err: err}
-		}
 
 		var rows []ServiceListRow
+		if resp == nil {
+			return servicesLoadedMsg{rows: rows, err: err}
+		}
 		for _, nodeMsg := range resp.GetMessages() {
 			if nodeMsg.GetMetadata() == nil {
 				continue
