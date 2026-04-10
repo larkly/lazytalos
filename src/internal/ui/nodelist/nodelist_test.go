@@ -187,6 +187,16 @@ func TestSortCycle(t *testing.T) {
 		t.Errorf("expected sortByHealth after second s, got %d", m.sortBy)
 	}
 
+	// Press 's' to cycle through cpu and memory
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByCPU {
+		t.Errorf("expected sortByCPU after third s, got %d", m.sortBy)
+	}
+	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
+	if m.sortBy != sortByMemory {
+		t.Errorf("expected sortByMemory after fourth s, got %d", m.sortBy)
+	}
+
 	// Press 's' again - wraps around
 	m, _ = m.Update(tea.KeyMsg(tea.KeyPressMsg{Code: 's'}))
 	if m.sortBy != sortByHostname {

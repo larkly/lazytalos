@@ -25,6 +25,7 @@ import (
 	"github.com/larkly/lazytalos/internal/ui/network"
 	"github.com/larkly/lazytalos/internal/ui/nodelist"
 	"github.com/larkly/lazytalos/internal/ui/servicelist"
+	"github.com/larkly/lazytalos/internal/ui/settings"
 	upgradeui "github.com/larkly/lazytalos/internal/ui/upgrade"
 	"github.com/larkly/lazytalos/internal/ui/statusbar"
 	"github.com/larkly/lazytalos/internal/ui/storage"
@@ -91,6 +92,10 @@ type Model struct {
 	// Config view overlay
 	configView configview.Model
 
+	// Settings overlay
+	settings  settings.Model
+	appConfig *config.Config
+
 	// Config editor overlay
 	configEditor  configeditor.Model
 	editingConfig bool
@@ -121,26 +126,30 @@ type Model struct {
 	height int
 
 	// Config
-	refreshInterval time.Duration
-	talosconfig     string
-	pickContext     bool // always show picker
-	noUpdateCheck   bool
+	refreshInterval     time.Duration
+	talosconfig         string
+	pickContext         bool // always show picker
+	noUpdateCheck       bool
+	updateCheckInterval time.Duration
 
 	// State
-	restart    bool
-	autoSelect string // context to auto-select on Init
-	version    string
+	restart        bool
+	autoSelect     string // context to auto-select on Init
+	version        string
+	latestVersion  string // set when a newer release is detected
 }
 
 // Options configures the application.
 type Options struct {
-	Talosconfig     string
-	Context         string
-	RefreshInterval time.Duration
-	PickContext      bool
-	Version         string
-	Plain           bool
-	NoUpdateCheck   bool
+	Talosconfig          string
+	Context              string
+	RefreshInterval      time.Duration
+	PickContext           bool
+	Version              string
+	Plain                bool
+	NoUpdateCheck        bool
+	UpdateCheckInterval  time.Duration
+	AppConfig            *config.Config
 }
 
 // ShouldRestart returns true if the app quit due to a restart request.
@@ -178,7 +187,19 @@ func New(opts Options) Model {
 		selectedNodes:   make(map[string]bool),
 		help:            help.New(),
 		configView:      configview.New(opts.Talosconfig),
-		noUpdateCheck:   opts.NoUpdateCheck,
+		noUpdateCheck:       opts.NoUpdateCheck,
+		updateCheckInterval: opts.UpdateCheckInterval,
+		appConfig:           opts.AppConfig,
+	}
+	if m.appConfig != nil {
+		m.settings = settings.New(m.appConfig)
+	} else {
+		defaults := config.Defaults()
+		m.appConfig = &defaults
+		m.settings = settings.New(m.appConfig)
+	}
+	if m.updateCheckInterval == 0 {
+		m.updateCheckInterval = 24 * time.Hour
 	}
 
 	// Auto-select if --context flag is set, or exactly one context and not forced to pick
@@ -211,10 +232,11 @@ func (m Model) Init() tea.Cmd {
 
 	if !m.noUpdateCheck {
 		ver := m.version
+		ttl := m.updateCheckInterval
 		cmds = append(cmds, func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			rel, _ := update.CheckLatest(ctx)
+			rel, _ := update.CheckLatestCached(ctx, ver, ttl)
 			if rel == nil {
 				return nil
 			}
@@ -287,6 +309,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusBar.Width = m.width
 		m.help.SetSize(m.width, m.height)
 		m.configView.SetSize(m.width, m.height)
+		m.settings.Width = m.width
+		m.settings.Height = m.height
 		// Propagate size to all initialized views
 		ch := m.contentHeight()
 		if m.tabInited[0] {
@@ -328,6 +352,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		// Settings overlay intercepts all keys when visible
+		if m.settings.Visible {
+			var cmd tea.Cmd
+			m.settings, cmd = m.settings.Update(msg)
+			return m, cmd
+		}
+
 		// Config view overlay intercepts all keys when visible
 		if m.configView.IsVisible() {
 			var cmd tea.Cmd
@@ -342,6 +373,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.switchToContextPicker()
 		case key.Matches(msg, shared.Keys.Help) && m.view != viewContextPicker:
 			m.help.Open(m.statusBar.CurrentView)
+			return m, nil
+		case key.Matches(msg, shared.Keys.Settings) && m.view != viewContextPicker:
+			m.settings.Width = m.width
+			m.settings.Height = m.height
+			m.settings.Open()
 			return m, nil
 		case key.Matches(msg, shared.Keys.ConfigView) && m.view != viewContextPicker:
 			m.configView = m.configView.Toggle()
@@ -559,7 +595,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case shared.UpdateAvailableMsg:
 		shared.Debugf("[app] update available: %s (%s)", msg.Version, msg.URL)
+		m.latestVersion = msg.Version
 		m.statusBar.Hint = "Update available: " + msg.Version + " — " + msg.URL
+		return m, nil
+
+	case shared.ConfigChangedMsg:
+		shared.Debugf("[app] config changed, updating runtime settings")
+		if m.appConfig != nil {
+			m.refreshInterval = time.Duration(m.appConfig.General.RefreshInterval) * time.Second
+			m.noUpdateCheck = !m.appConfig.General.CheckForUpdates
+			m.updateCheckInterval = time.Duration(m.appConfig.General.UpdateCheckInterval) * time.Hour
+			m.pickContext = m.appConfig.General.AlwaysPickContext
+		}
 		return m, nil
 
 	case shared.TickMsg:

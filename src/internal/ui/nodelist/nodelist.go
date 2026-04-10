@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"image/color"
 	"slices"
 	"strings"
 	"time"
@@ -12,9 +13,12 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
+	"google.golang.org/grpc"
 
 	"github.com/larkly/lazytalos/internal/cluster"
+	"github.com/larkly/lazytalos/internal/resources"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
 )
@@ -25,6 +29,8 @@ const (
 	sortByHostname sortField = iota
 	sortByType
 	sortByHealth
+	sortByCPU
+	sortByMemory
 	sortFieldMax
 )
 
@@ -45,6 +51,39 @@ type serviceInfo struct {
 	Health string
 }
 
+type memoryLoadedMsg struct {
+	memoryByNode map[string]shared.MemStats
+	err          error
+}
+
+type cpuLoadedMsg struct {
+	cpuByNode map[string]resources.CPUStats
+	err       error
+}
+
+// Detail log streaming types.
+type detailLogLineMsg struct {
+	service string
+	text    string
+	isErr   bool
+}
+
+type detailLogEndedMsg struct {
+	service string
+}
+
+type detailLogLine struct {
+	service string
+	text    string
+	isErr   bool
+	t       time.Time
+}
+
+type detailStream struct {
+	cancel context.CancelFunc
+	stream grpc.ServerStreamingClient[common.Data]
+}
+
 // Model is the node list view model.
 type Model struct {
 	client          *talos.Client
@@ -63,6 +102,14 @@ type Model struct {
 	scrollOff       int
 	sortBy          sortField
 	refreshInterval time.Duration
+	memoryByNode    map[string]shared.MemStats
+	cpuByNode       map[string]resources.CPUStats
+
+	// Detail log streaming
+	detailLogs    []detailLogLine
+	detailStreams map[string]detailStream // service -> stream
+	detailScroll  int
+	detailFollow  bool
 }
 
 // New creates a new node list model.
@@ -72,6 +119,8 @@ func New(client *talos.Client, refreshInterval time.Duration) Model {
 		selected:        make(map[string]bool),
 		loading:         true,
 		refreshInterval: refreshInterval,
+		memoryByNode:    make(map[string]shared.MemStats),
+		cpuByNode:       make(map[string]resources.CPUStats),
 	}
 }
 
@@ -93,7 +142,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.updateList(msg)
 
 	case shared.TickMsg:
-		return m, m.fetchMembers()
+		return m, m.ForceRefresh()
 
 	case membersLoadedMsg:
 		if msg.err != nil && len(msg.nodes) == 0 {
@@ -114,6 +163,37 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.detailServices = svcs
 			}
 		}
+
+	case memoryLoadedMsg:
+		if msg.err == nil {
+			m.memoryByNode = msg.memoryByNode
+		}
+
+	case cpuLoadedMsg:
+		if msg.err == nil {
+			m.cpuByNode = msg.cpuByNode
+		}
+
+	case detailLogLineMsg:
+		if m.detailView {
+			m.detailLogs = append(m.detailLogs, detailLogLine{
+				service: msg.service,
+				text:    msg.text,
+				isErr:   msg.isErr,
+				t:       time.Now(),
+			})
+			const maxDetailLines = 1000
+			if len(m.detailLogs) > maxDetailLines {
+				m.detailLogs = m.detailLogs[len(m.detailLogs)-maxDetailLines:]
+			}
+			// Chain next read from the same stream
+			if s, ok := m.detailStreams[msg.service]; ok {
+				return m, awaitDetailLogLine(s.stream, msg.service)
+			}
+		}
+
+	case detailLogEndedMsg:
+		delete(m.detailStreams, msg.service)
 	}
 
 	return m, nil
@@ -155,7 +235,11 @@ func (m Model) updateList(msg tea.KeyMsg) (Model, tea.Cmd) {
 		if m.cursor < len(m.filtered) {
 			m.detailView = true
 			m.detailServices = nil
-			return m, m.fetchServicesForDetail()
+			m.detailLogs = nil
+			m.detailStreams = make(map[string]detailStream)
+			m.detailScroll = 0
+			m.detailFollow = true
+			return m, tea.Batch(m.fetchServicesForDetail(), m.startDetailLogStreams())
 		}
 	case key.Matches(msg, shared.Keys.Filter):
 		m.filterActive = true
@@ -245,7 +329,27 @@ func (m Model) updateFilter(msg tea.KeyMsg) (Model, tea.Cmd) {
 func (m Model) updateDetail(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, shared.Keys.Back):
+		m.cancelDetailStreams()
 		m.detailView = false
+	case key.Matches(msg, shared.Keys.LogFollow):
+		m.detailFollow = !m.detailFollow
+	case key.Matches(msg, shared.Keys.Down):
+		m.detailScroll++
+		m.detailFollow = false
+	case key.Matches(msg, shared.Keys.Up):
+		if m.detailScroll > 0 {
+			m.detailScroll--
+		}
+		m.detailFollow = false
+	case key.Matches(msg, shared.Keys.PageDown):
+		m.detailScroll += 10
+		m.detailFollow = false
+	case key.Matches(msg, shared.Keys.PageUp):
+		m.detailScroll -= 10
+		if m.detailScroll < 0 {
+			m.detailScroll = 0
+		}
+		m.detailFollow = false
 	case key.Matches(msg, shared.Keys.ResetNode):
 		if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
 			n := m.filtered[m.cursor]
@@ -301,6 +405,30 @@ func (m *Model) sortData() {
 				bH = 1
 			}
 			return cmp.Compare(aH, bH)
+		})
+	case sortByCPU:
+		slices.SortFunc(m.filtered, func(a, b cluster.NodeInfo) int {
+			aV := 0.0
+			if cs, ok := m.cpuByNode[a.Hostname]; ok {
+				aV = cs.UsagePercent
+			}
+			bV := 0.0
+			if cs, ok := m.cpuByNode[b.Hostname]; ok {
+				bV = cs.UsagePercent
+			}
+			return cmp.Compare(bV, aV) // descending — highest CPU first
+		})
+	case sortByMemory:
+		slices.SortFunc(m.filtered, func(a, b cluster.NodeInfo) int {
+			aV := 0.0
+			if mem, ok := m.memoryByNode[a.Hostname]; ok && mem.TotalKB > 0 {
+				aV = float64(mem.TotalKB-mem.AvailableKB) / float64(mem.TotalKB)
+			}
+			bV := 0.0
+			if mem, ok := m.memoryByNode[b.Hostname]; ok && mem.TotalKB > 0 {
+				bV = float64(mem.TotalKB-mem.AvailableKB) / float64(mem.TotalKB)
+			}
+			return cmp.Compare(bV, aV) // descending — highest memory first
 		})
 	}
 }
@@ -363,13 +491,55 @@ func (m Model) viewList() string {
 		b.WriteString(shared.StyleError.Render(fmt.Sprintf("  Error: %v", m.err)) + "\n")
 	}
 
-	// Column widths — dynamic based on terminal width
-	// Prefix(2) + name + gap + type(14) + gap + version(10) + gap + health(8) + gap + ip
-	nameW := m.width - 2 - 14 - 10 - 8 - 4 // 4 gaps
+	// Column widths — adapt to terminal width.
+	// Fixed columns: prefix(2) + type(14) + version(10) + health(3) + uptime(7) + gaps(6)
+	const fixedW = 2 + 14 + 10 + 3 + 7 + 6
+	flexible := m.width - fixedW
+	// Distribute: name(20) + cpubar + membar, then IP/IPv6 if room
+	nameW := 20
 	ipW := 0
-	if nameW > 40 {
-		ipW = nameW - 30
-		nameW = 30
+	ip6W := 0
+	barSpace := flexible - nameW
+	if barSpace > 60 {
+		excess := barSpace - 60
+		barSpace = 60
+		// First priority: IPv4 column (16 chars)
+		if excess >= 16 {
+			ipW = 16
+			excess -= 16
+		}
+		// Second priority: give leftover to hostname
+		if excess > 0 && nameW < 30 {
+			add := excess
+			if nameW+add > 30 {
+				add = 30 - nameW
+			}
+			nameW += add
+			excess -= add
+		}
+		// Third priority: IPv6 column if there's still room (needs ~40 chars)
+		if excess >= 25 {
+			ip6W = excess
+			if ip6W > 42 {
+				ip6W = 42
+			}
+		}
+	}
+	if barSpace < 16 {
+		barSpace = 16
+		nameW = flexible - barSpace
+		if nameW < 10 {
+			nameW = 10
+		}
+	}
+	// Split bar space evenly between CPU and memory
+	cpuBarW := barSpace / 2
+	memBarW := barSpace - cpuBarW
+	if cpuBarW < 8 {
+		cpuBarW = 8
+	}
+	if memBarW < 8 {
+		memBarW = 8
 	}
 
 	// Sort indicator
@@ -381,13 +551,19 @@ func (m Model) viewList() string {
 	}
 
 	// Header
-	header := fmt.Sprintf("  %-*s %-14s %-10s %-8s",
+	header := fmt.Sprintf("  %-*s %-14s %-10s %-3s %-*s %-*s %-7s",
 		nameW, "HOSTNAME"+sortIndicator(sortByHostname),
 		"TYPE"+sortIndicator(sortByType),
 		"VERSION",
-		"HEALTH"+sortIndicator(sortByHealth))
+		"●",
+		cpuBarW, "CPU"+sortIndicator(sortByCPU),
+		memBarW, "MEMORY"+sortIndicator(sortByMemory),
+		"UPTIME")
 	if ipW > 0 {
-		header += fmt.Sprintf(" %-*s", ipW, "IP")
+		header += fmt.Sprintf(" %-*s", ipW, "IPv4")
+	}
+	if ip6W > 0 {
+		header += fmt.Sprintf(" %-*s", ip6W, "IPv6")
 	}
 	b.WriteString(shared.StyleHeader.Render(header) + "\n")
 
@@ -424,21 +600,65 @@ func (m Model) viewList() string {
 			healthStyle = shared.StyleError
 		}
 
-		ip := ""
-		if len(n.Addresses) > 0 {
-			ip = n.Addresses[0]
+		// CPU bar — pad to cpuBarW visual width
+		cpuBar := shared.StyleMuted.Render(fmt.Sprintf("%-*s", cpuBarW, " N/A"))
+		if cs, ok := m.cpuByNode[n.Hostname]; ok {
+			rendered := shared.RenderCPUBar(cs.UsagePercent, cpuBarW)
+			visW := lipgloss.Width(rendered)
+			if visW < cpuBarW {
+				rendered += strings.Repeat(" ", cpuBarW-visW)
+			}
+			cpuBar = rendered
+		}
+
+		// Memory bar — pad to memBarW visual width
+		memBar := shared.StyleMuted.Render(fmt.Sprintf("%-*s", memBarW, " N/A"))
+		if mem, ok := m.memoryByNode[n.Hostname]; ok && mem.TotalKB > 0 {
+			used := mem.TotalKB - mem.AvailableKB
+			pct := float64(used) / float64(mem.TotalKB)
+			rendered := shared.RenderMemBar(pct, memBarW)
+			visW := lipgloss.Width(rendered)
+			if visW < memBarW {
+				rendered += strings.Repeat(" ", memBarW-visW)
+			}
+			memBar = rendered
+		}
+
+		// Uptime
+		uptimeStr := shared.StyleMuted.Render("   --  ")
+		if cs, ok := m.cpuByNode[n.Hostname]; ok && !cs.BootTime.IsZero() {
+			uptimeStr = fmt.Sprintf("%-7s", shared.FormatUptime(time.Since(cs.BootTime)))
+		}
+
+		// Split addresses into IPv4 and IPv6
+		var ip4, ip6 string
+		for _, a := range n.Addresses {
+			if strings.Contains(a, ":") {
+				if ip6 == "" {
+					ip6 = a
+				}
+			} else {
+				if ip4 == "" {
+					ip4 = a
+				}
+			}
 		}
 
 		// Build plain row for alignment, then apply styling
 		nameStr := shared.Truncate(shared.ShortenHostname(n.Hostname), nameW)
-		row := fmt.Sprintf("%-*s %-14s %-10s %s %-6s",
+		row := fmt.Sprintf("%-*s %-14s %-10s %s %s %s %s",
 			nameW, nameStr,
 			typeStr,
 			n.TalosVersion,
 			healthStyle.Render(healthIcon),
-			"")
+			cpuBar,
+			memBar,
+			uptimeStr)
 		if ipW > 0 {
-			row += fmt.Sprintf(" %-*s", ipW, shared.Truncate(ip, ipW))
+			row += fmt.Sprintf(" %-*s", ipW, shared.Truncate(ip4, ipW))
+		}
+		if ip6W > 0 {
+			row += fmt.Sprintf(" %-*s", ip6W, shared.Truncate(ip6, ip6W))
 		}
 
 		// Apply row background and styling
@@ -482,6 +702,23 @@ func (m Model) viewDetail() string {
 	lines = append(lines, fmt.Sprintf("  %-20s %s", shared.StyleLabel.Render("Talos Version:"), n.TalosVersion))
 	lines = append(lines, fmt.Sprintf("  %-20s %s", shared.StyleLabel.Render("Healthy:"), fmt.Sprintf("%v", n.Healthy)))
 
+	// CPU
+	if cs, ok := m.cpuByNode[n.Hostname]; ok {
+		lines = append(lines, fmt.Sprintf("  %-20s %.0f%%", shared.StyleLabel.Render("CPU:"), cs.UsagePercent*100))
+	}
+
+	// Memory
+	if mem, ok := m.memoryByNode[n.Hostname]; ok && mem.TotalKB > 0 {
+		used := mem.TotalKB - mem.AvailableKB
+		pct := float64(used) / float64(mem.TotalKB)
+		lines = append(lines, fmt.Sprintf("  %-20s %s", shared.StyleLabel.Render("Memory:"), shared.RenderMemBar(pct, 20)))
+	}
+
+	// Uptime
+	if cs, ok := m.cpuByNode[n.Hostname]; ok && !cs.BootTime.IsZero() {
+		lines = append(lines, fmt.Sprintf("  %-20s %s", shared.StyleLabel.Render("Uptime:"), shared.FormatUptime(time.Since(cs.BootTime))))
+	}
+
 	lines = append(lines, "")
 	lines = append(lines, shared.StyleLabel.Render("  Addresses:"))
 	for _, a := range n.Addresses {
@@ -504,9 +741,68 @@ func (m Model) viewDetail() string {
 		}
 	}
 
+	// Log pane separator
 	lines = append(lines, "")
-	lines = append(lines, shared.StyleMuted.Render("  Press Esc to go back"))
+	followTag := ""
+	if m.detailFollow {
+		followTag = shared.StyleMuted.Render(" (following)")
+	}
+	lines = append(lines, shared.StyleLabel.Render("  Logs:")+followTag)
+	lines = append(lines, shared.StyleMuted.Render("  "+strings.Repeat("─", m.width-4)))
 
+	// Calculate available log lines
+	infoLines := len(lines)
+	logViewH := m.height - infoLines - 1 // -1 for hint line
+	if logViewH < 3 {
+		logViewH = 3
+	}
+
+	if len(m.detailLogs) == 0 {
+		lines = append(lines, shared.StyleMuted.Render("    Waiting for logs..."))
+		for len(lines) < m.height-1 {
+			lines = append(lines, "")
+		}
+	} else {
+		// Determine scroll window
+		startIdx := 0
+		if m.detailFollow {
+			startIdx = len(m.detailLogs) - logViewH
+		} else {
+			startIdx = m.detailScroll
+		}
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		if startIdx > len(m.detailLogs)-1 {
+			startIdx = len(m.detailLogs) - 1
+		}
+
+		for i := startIdx; i < len(m.detailLogs) && i < startIdx+logViewH; i++ {
+			l := m.detailLogs[i]
+			svcColor := detailLogColorFor(l.service)
+			ts := shared.StyleMuted.Render(l.t.Format("15:04:05"))
+			svcTag := lipgloss.NewStyle().Foreground(svcColor).Render(fmt.Sprintf("[%-10s]", shared.Truncate(l.service, 10)))
+			text := l.text
+			maxTextW := m.width - 24
+			if maxTextW > 0 && len(text) > maxTextW {
+				text = text[:maxTextW]
+			}
+			line := fmt.Sprintf("  %s %s %s", ts, svcTag, text)
+			if l.isErr {
+				line = shared.StyleError.Render(line)
+			}
+			lines = append(lines, line)
+		}
+		for len(lines) < m.height-1 {
+			lines = append(lines, "")
+		}
+	}
+
+	lines = append(lines, shared.StyleMuted.Render("  esc:back  ↑↓:scroll logs  F:follow  ctrl+x:reset"))
+
+	if len(lines) > m.height {
+		lines = lines[:m.height]
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -519,18 +815,22 @@ func (m *Model) SetSize(w, h int) {
 // Hints returns status bar hint text.
 func (m Model) Hints() string {
 	if m.detailView {
-		return "esc:back  ctrl+x:reset"
+		return "esc:back  ↑↓:scroll logs  F:follow  ctrl+x:reset"
 	}
 	if m.filterActive {
 		return "type to filter  enter:apply  esc:cancel"
 	}
-	sortLabel := [sortFieldMax]string{"hostname", "type", "health"}
+	sortLabel := [sortFieldMax]string{"hostname", "type", "health", "cpu", "memory"}
 	return fmt.Sprintf("space:select  A:all  enter:detail  /:filter  s:sort(%s)  y:copy IP  Y:copy endpoint  ctrl+o:reboot  ctrl+d:shutdown  ctrl+u:upgrade", sortLabel[m.sortBy])
 }
 
 // ForceRefresh triggers an immediate data refresh.
 func (m Model) ForceRefresh() tea.Cmd {
-	return m.fetchMembers()
+	return tea.Batch(
+		m.fetchMembers(),
+		m.fetchMemory(),
+		m.fetchCPU(),
+	)
 }
 
 // SelectedNodes returns the list of selected node hostnames, or the cursor node if none selected.
@@ -658,4 +958,105 @@ func (m Model) fetchServicesForDetail() tea.Cmd {
 	}
 }
 
+func (m Model) fetchMemory() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		if client == nil || client.C == nil {
+			return memoryLoadedMsg{memoryByNode: make(map[string]shared.MemStats)}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		stats, err := resources.ListMemStats(ctx, client)
+		byNode := make(map[string]shared.MemStats, len(stats))
+		for _, s := range stats {
+			byNode[s.NodeHostname] = s
+		}
+		return memoryLoadedMsg{memoryByNode: byNode, err: err}
+	}
+}
 
+func (m Model) fetchCPU() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		if client == nil || client.C == nil {
+			return cpuLoadedMsg{cpuByNode: make(map[string]resources.CPUStats)}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		stats, err := resources.ListCPUStats(ctx, client)
+		byNode := make(map[string]resources.CPUStats, len(stats))
+		for _, s := range stats {
+			byNode[s.NodeHostname] = s
+		}
+		return cpuLoadedMsg{cpuByNode: byNode, err: err}
+	}
+}
+
+// defaultDetailServices are the services to stream logs for in node detail view.
+var defaultDetailServices = []string{
+	"kubelet", "etcd", "apid", "machined", "containerd",
+}
+
+func (m *Model) startDetailLogStreams() tea.Cmd {
+	if m.client == nil || m.client.C == nil || m.cursor >= len(m.filtered) {
+		return nil
+	}
+	node := m.filtered[m.cursor]
+	target := node.Hostname
+	if len(node.Addresses) > 0 {
+		target = node.Addresses[0]
+	}
+
+	var cmds []tea.Cmd
+	for _, svc := range defaultDetailServices {
+		if _, exists := m.detailStreams[svc]; exists {
+			continue
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		nodeCtx := talosclient.WithNodes(ctx, target)
+
+		var tailLines int32 = 20
+		stream, err := m.client.C.Logs(nodeCtx, "system", common.ContainerDriver_CONTAINERD, svc, true, tailLines)
+		if err != nil {
+			cancel()
+			continue
+		}
+		m.detailStreams[svc] = detailStream{cancel: cancel, stream: stream}
+		cmds = append(cmds, awaitDetailLogLine(stream, svc))
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m *Model) cancelDetailStreams() {
+	for svc, s := range m.detailStreams {
+		s.cancel()
+		delete(m.detailStreams, svc)
+	}
+	m.detailLogs = nil
+}
+
+func awaitDetailLogLine(stream grpc.ServerStreamingClient[common.Data], svc string) tea.Cmd {
+	return func() tea.Msg {
+		data, err := stream.Recv()
+		if err != nil {
+			return detailLogEndedMsg{service: svc}
+		}
+		text := string(data.GetBytes())
+		text = strings.TrimRight(text, "\n")
+		return detailLogLineMsg{service: svc, text: text}
+	}
+}
+
+func detailLogColorFor(svc string) color.Color {
+	if len(shared.NodeColors) == 0 {
+		return lipgloss.Color("#839496")
+	}
+	h := 0
+	for _, c := range svc {
+		h += int(c)
+	}
+	return shared.NodeColors[h%len(shared.NodeColors)]
+}

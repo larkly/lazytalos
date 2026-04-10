@@ -401,7 +401,7 @@ func (m Model) Hints() string {
 		return "type to filter  enter:apply  esc:cancel"
 	}
 	sortLabel := [sortFieldMax]string{"node/service", "state", "last change"}
-	return fmt.Sprintf("enter:detail  /:filter  s:sort(%s)  g:group by node  ctrl+k:restart service", sortLabel[m.sortBy])
+	return fmt.Sprintf("enter:detail  /:filter  s:sort(%s)  g:group by node  ctrl+j:restart service", sortLabel[m.sortBy])
 }
 
 // ForceRefresh triggers an immediate data refresh.

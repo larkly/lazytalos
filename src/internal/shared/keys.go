@@ -47,10 +47,13 @@ type KeyMap struct {
 	// Write actions (Ctrl-prefixed)
 	Reboot           key.Binding // ctrl+o
 	Shutdown         key.Binding // ctrl+d
-	ServiceRestart   key.Binding // ctrl+k
+	ServiceRestart   key.Binding // ctrl+j
 	EditConfig       key.Binding // ctrl+e
 	ContainerLogs    key.Binding // ctrl+l
 	RemoveEtcdMember key.Binding // ctrl+m
+
+	// Settings overlay
+	Settings key.Binding // ctrl+k
 
 	// Confirmation
 	Confirm key.Binding // ctrl+s
@@ -198,8 +201,8 @@ var Keys = KeyMap{
 		key.WithHelp("ctrl+d", "shutdown"),
 	),
 	ServiceRestart: key.NewBinding(
-		key.WithKeys("ctrl+k"),
-		key.WithHelp("ctrl+k", "restart service"),
+		key.WithKeys("ctrl+j"),
+		key.WithHelp("ctrl+j", "restart service"),
 	),
 	EditConfig: key.NewBinding(
 		key.WithKeys("ctrl+e"),
@@ -248,5 +251,9 @@ var Keys = KeyMap{
 	ConfigView: key.NewBinding(
 		key.WithKeys("ctrl+,"),
 		key.WithHelp("ctrl+,", "view talosconfig"),
+	),
+	Settings: key.NewBinding(
+		key.WithKeys("ctrl+k"),
+		key.WithHelp("ctrl+k", "settings"),
 	),
 }

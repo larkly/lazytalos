@@ -2,29 +2,17 @@ package shared
 
 import "strings"
 
-// ShortenHostname extracts the meaningful part of a FQDN hostname.
-// e.g. "tnn3-demo-cp-1.novalocal" -> "cp-1"
-// IPv6 addresses and IPs are returned with a short suffix.
+// ShortenHostname strips domain suffixes from a FQDN hostname but preserves
+// the full short name. e.g. "talos-cp-1.novalocal" -> "talos-cp-1".
+// IPv6 addresses and bare IPs are returned as-is.
 func ShortenHostname(hostname string) string {
-	// IPv6 address — show last segment
-	if strings.Contains(hostname, ":") {
-		parts := strings.Split(hostname, ":")
-		return "…" + parts[len(parts)-1]
-	}
-	// IPv4 address — show last two octets
-	if isIPv4(hostname) {
-		parts := strings.Split(hostname, ".")
-		if len(parts) == 4 {
-			return parts[2] + "." + parts[3]
-		}
+	// IPv6 or IPv4 — return as-is
+	if strings.Contains(hostname, ":") || isIPv4(hostname) {
+		return hostname
 	}
 	// Strip domain suffix
 	if idx := strings.Index(hostname, "."); idx > 0 {
 		hostname = hostname[:idx]
-	}
-	parts := strings.Split(hostname, "-")
-	if len(parts) >= 2 {
-		return strings.Join(parts[len(parts)-2:], "-")
 	}
 	return hostname
 }

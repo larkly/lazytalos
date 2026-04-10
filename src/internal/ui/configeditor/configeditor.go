@@ -85,7 +85,7 @@ func New(client *talos.Client, node, yaml string, width, height int) Model {
 	km.Paste.SetEnabled(false)
 	ta.KeyMap = km
 
-	// Disable ctrl+k (delete-after-cursor) because it conflicts with ServiceRestart.
+	// Disable ctrl+k (delete-after-cursor) because it conflicts with Settings overlay.
 	ta.KeyMap.DeleteAfterCursor.SetEnabled(false)
 
 	ta.ShowLineNumbers = true
