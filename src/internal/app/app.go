@@ -627,7 +627,14 @@ func (m Model) forceRefreshActiveView() (Model, tea.Cmd) {
 // discovered cluster members, mapping hostnames to their first address
 // so the UI shows friendly names while API calls use routable addresses.
 func (m *Model) syncLogViewerNodes() {
+	// Try the node list first (already loaded by tab 2)
 	allNodes := m.nodeList.AllNodes()
+	if len(allNodes) == 0 {
+		// Fall back to direct member discovery
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		allNodes, _ = cluster.GetMembers(ctx, m.client)
+	}
 	if len(allNodes) > 0 {
 		hostnames := make([]string, len(allNodes))
 		addrs := make(map[string]string, len(allNodes))
@@ -638,7 +645,5 @@ func (m *Model) syncLogViewerNodes() {
 			}
 		}
 		m.logViewer.SetNodesWithAddrs(hostnames, addrs)
-	} else {
-		m.logViewer.SetNodes(m.client.Endpoints)
 	}
 }
