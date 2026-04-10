@@ -560,9 +560,10 @@ func (m Model) fetchCPU() tea.Cmd {
 func (m Model) renderClusterStatus(maxLines int) string {
 	cpCount := 0
 	workerCount := 0
-	healthyCount := 0
 	failedCount := 0
+	unreachableCount := 0
 	version := ""
+	hasAnyData := len(m.servicesByNode) > 0
 	for _, n := range m.nodes {
 		if n.IsControlPlane() {
 			cpCount++
@@ -572,21 +573,16 @@ func (m Model) renderClusterStatus(maxLines int) string {
 		if version == "" && n.TalosVersion != "" {
 			version = n.TalosVersion
 		}
-		if n.Healthy {
-			healthyCount++
-		}
-		// Check service health
-		nodeFailed := false
-		if svcs, ok := m.servicesByNode[n.Hostname]; ok {
+		svcs, hasSvcs := m.servicesByNode[n.Hostname]
+		if hasSvcs {
 			for _, s := range svcs {
 				if s.Health == "Failed" {
-					nodeFailed = true
+					failedCount++
 					break
 				}
 			}
-		}
-		if nodeFailed {
-			failedCount++
+		} else if hasAnyData {
+			unreachableCount++
 		}
 	}
 
@@ -606,11 +602,18 @@ func (m Model) renderClusterStatus(maxLines int) string {
 	lines = append(lines, fmt.Sprintf("%s  %s", shared.StyleMuted.Render("Version:"), shared.StyleValue.Render(version)))
 
 	// Overall health
-	healthStr := shared.StyleSuccess.Render(shared.StatusIcon("Running") + " All healthy")
-	if failedCount > 0 {
+	var healthStr string
+	switch {
+	case failedCount > 0 && unreachableCount > 0:
+		healthStr = shared.StyleError.Render(fmt.Sprintf("%s %d degraded, %d unreachable", shared.StatusIcon("Failed"), failedCount, unreachableCount))
+	case failedCount > 0:
 		healthStr = shared.StyleError.Render(fmt.Sprintf("%s %d node(s) degraded", shared.StatusIcon("Failed"), failedCount))
-	} else if len(m.servicesByNode) == 0 {
+	case unreachableCount > 0:
+		healthStr = shared.StyleWarning.Render(fmt.Sprintf("%s %d node(s) unreachable", shared.StatusIcon("Stopped"), unreachableCount))
+	case !hasAnyData:
 		healthStr = shared.StyleMuted.Render("? Awaiting data")
+	default:
+		healthStr = shared.StyleSuccess.Render(shared.StatusIcon("Running") + " All healthy")
 	}
 	lines = append(lines, fmt.Sprintf("%s  %s", shared.StyleMuted.Render("Health:"), healthStr))
 
@@ -656,6 +659,9 @@ func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serv
 		showMax-- // reserve a line for the "more" indicator
 	}
 
+	// If we have service data for any node, nodes without data are unreachable
+	hasAnyData := len(servicesByNode) > 0
+
 	for i, n := range nodes {
 		if i >= showMax {
 			break
@@ -665,10 +671,11 @@ func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serv
 			typeStr = lipgloss.NewStyle().Foreground(shared.ColorPrimary).Render("CP")
 		}
 
-		// Health icon
+		// Health icon — check services, but also detect unreachable nodes
 		healthIcon := shared.StatusIcon("Running")
 		healthStyle := shared.StyleSuccess
-		if svcs, ok := servicesByNode[n.Hostname]; ok {
+		svcs, hasSvcs := servicesByNode[n.Hostname]
+		if hasSvcs {
 			for _, s := range svcs {
 				if s.Health == "Failed" {
 					healthIcon = shared.StatusIcon("Failed")
@@ -676,6 +683,10 @@ func RenderNodeHealth(nodes []cluster.NodeInfo, servicesByNode map[string][]serv
 					break
 				}
 			}
+		} else if hasAnyData {
+			// Data loaded for other nodes but not this one — unreachable
+			healthIcon = shared.StatusIcon("Stopped")
+			healthStyle = shared.StyleWarning
 		}
 
 		// CPU%
@@ -757,6 +768,8 @@ func (m Model) renderNodeExpanded() string {
 		endIdx = len(m.nodes)
 	}
 
+	expandHasData := len(m.servicesByNode) > 0
+
 	for i := m.nodeScroll; i < endIdx; i++ {
 		n := m.nodes[i]
 		typeStr := shared.StyleMuted.Render("Wk")
@@ -766,7 +779,8 @@ func (m Model) renderNodeExpanded() string {
 
 		healthIcon := shared.StatusIcon("Running")
 		healthStyle := shared.StyleSuccess
-		if svcs, ok := m.servicesByNode[n.Hostname]; ok {
+		svcs, hasSvcs := m.servicesByNode[n.Hostname]
+		if hasSvcs {
 			for _, s := range svcs {
 				if s.Health == "Failed" {
 					healthIcon = shared.StatusIcon("Failed")
@@ -774,6 +788,9 @@ func (m Model) renderNodeExpanded() string {
 					break
 				}
 			}
+		} else if expandHasData {
+			healthIcon = shared.StatusIcon("Stopped")
+			healthStyle = shared.StyleWarning
 		}
 
 		cpuStr := shared.StyleMuted.Render("  -- ")
