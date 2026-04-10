@@ -287,7 +287,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusBar.Width = m.width
 		m.help.SetSize(m.width, m.height)
 		m.configView.SetSize(m.width, m.height)
-		return m.updateActiveView(msg)
+		// Propagate size to all initialized views
+		ch := m.contentHeight()
+		if m.tabInited[0] {
+			m.dashboard.SetSize(m.width, ch)
+		}
+		if m.tabInited[1] {
+			m.nodeList.SetSize(m.width, ch)
+		}
+		if m.tabInited[2] {
+			m.serviceList.SetSize(m.width, ch)
+		}
+		if m.tabInited[3] {
+			m.logViewer.SetSize(m.width, ch)
+		}
+		if m.tabInited[4] {
+			m.containers.SetSize(m.width, ch)
+		}
+		if m.tabInited[5] {
+			m.network.SetSize(m.width, ch)
+		}
+		if m.tabInited[6] {
+			m.storage.SetSize(m.width, ch)
+		}
+		if m.tabInited[7] {
+			m.etcdView.SetSize(m.width, ch)
+		}
+		return m, nil
 
 	case tea.KeyMsg:
 		// Modal intercepts all keys
