@@ -583,6 +583,26 @@ func (m Model) fetchMembers() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		nodes, err := cluster.GetMembers(ctx, client)
+		if err != nil || len(nodes) == 0 || client == nil || client.C == nil {
+			return membersLoadedMsg{nodes: nodes, err: err}
+		}
+
+		// Use NodeTargets to determine which nodes are reachable
+		reachableAddrs, _ := cluster.NodeTargets(ctx, client)
+		reachable := make(map[string]bool)
+		for _, a := range reachableAddrs {
+			reachable[a] = true
+		}
+		for i, n := range nodes {
+			nodes[i].Healthy = false
+			for _, a := range n.Addresses {
+				if reachable[a] {
+					nodes[i].Healthy = true
+					break
+				}
+			}
+		}
+
 		return membersLoadedMsg{nodes: nodes, err: err}
 	}
 }
