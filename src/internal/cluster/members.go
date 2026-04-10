@@ -59,17 +59,25 @@ func GetMembers(ctx context.Context, c *talos.Client) ([]NodeInfo, error) {
 		resource.VersionUndefined,
 	)
 
-	// Target the first endpoint explicitly — member resources are replicated
-	// across all nodes so any CP endpoint has the full list. Avoids hitting
-	// unreachable nodes from the talosconfig Nodes list.
-	queryCtx := ctx
-	if len(c.Endpoints) > 0 {
-		queryCtx = talosclient.WithNode(ctx, c.Endpoints[0])
+	// Query each endpoint for member resources. Member resources are replicated
+	// so any single endpoint has the full list. We try each endpoint in case
+	// one is unreachable. The talosconfig Nodes list may include unreachable
+	// nodes, so we explicitly target endpoints (CPs) only.
+	var list *resource.List
+	var lastErr error
+	for _, ep := range c.Endpoints {
+		epCtx := talosclient.WithNode(ctx, ep)
+		l, err := c.C.COSI.List(epCtx, memberKind)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		list = &l
+		break
 	}
-	list, err := c.C.COSI.List(queryCtx, memberKind)
-	if err != nil {
-		shared.Debugf("[cluster] COSI List members error: %v", err)
-		return nil, err
+	if list == nil {
+		shared.Debugf("[cluster] COSI List members error: %v", lastErr)
+		return nil, lastErr
 	}
 
 	seen := make(map[string]bool)
