@@ -4,8 +4,10 @@ package nodelist
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"image/color"
+	"io"
 	"slices"
 	"strings"
 	"time"
@@ -70,6 +72,7 @@ type detailLogLineMsg struct {
 
 type detailLogEndedMsg struct {
 	service string
+	err     error // nil for clean close (EOF / context cancel)
 }
 
 type detailLogLine struct {
@@ -194,6 +197,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case detailLogEndedMsg:
 		delete(m.detailStreams, msg.service)
+		text, isErr := formatDetailStreamEnd(msg.err)
+		m.detailLogs = append(m.detailLogs, detailLogLine{
+			service: msg.service,
+			text:    text,
+			isErr:   isErr,
+			t:       time.Now(),
+		})
 	}
 
 	return m, nil
@@ -1041,11 +1051,23 @@ func (m *Model) CancelDetailStreams() {
 	m.detailLogs = nil
 }
 
+// formatDetailStreamEnd renders the synthetic "stream ended" line shown
+// in the node-detail log pane. Clean closes stay quiet; real errors are
+// surfaced so the user can tell a drained tail apart from a broken one.
+func formatDetailStreamEnd(err error) (text string, isErr bool) {
+	switch {
+	case err == nil, errors.Is(err, io.EOF), errors.Is(err, context.Canceled):
+		return "--- stream ended ---", false
+	default:
+		return "--- stream ended: " + err.Error() + " ---", true
+	}
+}
+
 func awaitDetailLogLine(stream grpc.ServerStreamingClient[common.Data], svc string) tea.Cmd {
 	return func() tea.Msg {
 		data, err := stream.Recv()
 		if err != nil {
-			return detailLogEndedMsg{service: svc}
+			return detailLogEndedMsg{service: svc, err: err}
 		}
 		text := string(data.GetBytes())
 		text = strings.TrimRight(text, "\n")

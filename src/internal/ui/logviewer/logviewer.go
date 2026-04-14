@@ -3,8 +3,10 @@ package logviewer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image/color"
+	"io"
 	"strings"
 	"time"
 
@@ -174,10 +176,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case shared.LogStreamEndedMsg:
 		sk := StreamKey{Node: msg.NodeID, Service: msg.Service}
 		delete(m.streams, sk)
+		text, isErr := formatStreamEnd(msg.Err)
 		m.appendLine(LogLine{
 			Node:    msg.NodeID,
 			Service: msg.Service,
-			Text:    "--- stream ended ---",
+			Text:    text,
+			IsErr:   isErr,
 			T:       time.Now(),
 		})
 
@@ -400,6 +404,19 @@ func (m *Model) startStream(node, svc string) tea.Cmd {
 	}
 
 	return awaitLogLine(stream, node, svc)
+}
+
+// formatStreamEnd renders the "stream ended" synthetic log line with a
+// user-visible reason. Clean closes (EOF, cancellation) stay quiet; real
+// errors are surfaced in red so users can tell a drained tail apart from
+// a broken one.
+func formatStreamEnd(err error) (text string, isErr bool) {
+	switch {
+	case err == nil, errors.Is(err, io.EOF), errors.Is(err, context.Canceled):
+		return "--- stream ended ---", false
+	default:
+		return "--- stream ended: " + err.Error() + " ---", true
+	}
 }
 
 // awaitLogLine returns a Cmd that blocks on the next log line from the stream.
