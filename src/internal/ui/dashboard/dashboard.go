@@ -28,15 +28,6 @@ var (
 	allServices    = []string{"apid", "auditd", "containerd", "cri", "dashboard", "etcd", "kubelet", "machined", "syslogd", "trustd", "udevd"}
 )
 
-type serviceRow struct {
-	ServiceID string
-	State     string
-	Health    string
-}
-
-// memStats is a local alias keyed by hostname for dashboard use.
-type memStats = shared.MemStats
-
 type eventRow struct {
 	Node    string
 	Actor   string
@@ -51,12 +42,12 @@ type membersLoadedMsg struct {
 }
 
 type servicesLoadedMsg struct {
-	servicesByNode map[string][]serviceRow
+	servicesByNode map[string][]shared.ServiceRow
 	err            error
 }
 
 type memoryLoadedMsg struct {
-	memoryByNode map[string]memStats
+	memoryByNode map[string]shared.MemStats
 	err          error
 }
 
@@ -79,8 +70,8 @@ type cpuLoadedMsg struct {
 type Model struct {
 	client          *talos.Client
 	nodes           []cluster.NodeInfo
-	servicesByNode  map[string][]serviceRow
-	memoryByNode    map[string]memStats
+	servicesByNode  map[string][]shared.ServiceRow
+	memoryByNode    map[string]shared.MemStats
 	cpuByNode       map[string]resources.CPUStats
 	events          []eventRow
 	diagnostics     []resources.DiagnosticEntry
@@ -99,8 +90,8 @@ func New(client *talos.Client, refreshInterval time.Duration) Model {
 	return Model{
 		client:          client,
 		refreshInterval: refreshInterval,
-		servicesByNode:  make(map[string][]serviceRow),
-		memoryByNode:    make(map[string]memStats),
+		servicesByNode:  make(map[string][]shared.ServiceRow),
+		memoryByNode:    make(map[string]shared.MemStats),
 		cpuByNode:       make(map[string]resources.CPUStats),
 		loading:         true,
 		followEvents:    true,
@@ -306,7 +297,7 @@ func (m Model) fetchServices() tea.Cmd {
 	client := m.client
 	return func() tea.Msg {
 		if client == nil || client.C == nil {
-			return servicesLoadedMsg{servicesByNode: make(map[string][]serviceRow)}
+			return servicesLoadedMsg{servicesByNode: make(map[string][]shared.ServiceRow)}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
@@ -315,7 +306,7 @@ func (m Model) fetchServices() tea.Cmd {
 		nodeCtx := talosclient.WithNodes(ctx, targets...)
 		resp, err := client.C.ServiceList(nodeCtx)
 
-		byNode := make(map[string][]serviceRow)
+		byNode := make(map[string][]shared.ServiceRow)
 		if resp == nil {
 			return servicesLoadedMsg{servicesByNode: byNode, err: err}
 		}
@@ -327,7 +318,7 @@ func (m Model) fetchServices() tea.Cmd {
 			if hostname == "" {
 				continue
 			}
-			var svcs []serviceRow
+			var svcs []shared.ServiceRow
 			for _, svc := range nodeMsg.GetServices() {
 				health := "?"
 				if svc.GetHealth() != nil {
@@ -339,7 +330,7 @@ func (m Model) fetchServices() tea.Cmd {
 						health = "Failed"
 					}
 				}
-				svcs = append(svcs, serviceRow{
+				svcs = append(svcs, shared.ServiceRow{
 					ServiceID: svc.GetId(),
 					State:     svc.GetState(),
 					Health:    health,
@@ -355,13 +346,13 @@ func (m Model) fetchMemory() tea.Cmd {
 	client := m.client
 	return func() tea.Msg {
 		if client == nil || client.C == nil {
-			return memoryLoadedMsg{memoryByNode: make(map[string]memStats)}
+			return memoryLoadedMsg{memoryByNode: make(map[string]shared.MemStats)}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
 		stats, err := resources.ListMemStats(ctx, client)
-		byNode := make(map[string]memStats, len(stats))
+		byNode := make(map[string]shared.MemStats, len(stats))
 		for _, s := range stats {
 			byNode[s.NodeHostname] = s
 		}
@@ -593,7 +584,7 @@ func (m Model) renderClusterStatus(maxLines int) string {
 
 // RenderNodeDotMatrix renders a compact dot-matrix cluster overview.
 // Each node is a single colored dot indicating its health state.
-func RenderNodeDotMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]serviceRow, memoryByNode map[string]memStats, cpuByNode map[string]resources.CPUStats, maxLines, panelWidth int) string {
+func RenderNodeDotMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]shared.ServiceRow, memoryByNode map[string]shared.MemStats, cpuByNode map[string]resources.CPUStats, maxLines, panelWidth int) string {
 	title := shared.StyleHeader.Render("CLUSTER NODES") +
 		shared.StyleMuted.Render(fmt.Sprintf(" (%d)", len(nodes)))
 	lines := []string{title}
@@ -678,16 +669,16 @@ func (m Model) renderNodeDotMatrix(maxLines int) string {
 }
 
 // RenderServiceMatrix renders the service status matrix. Exported for testing.
-func RenderServiceMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]serviceRow, maxLines int) string {
+func RenderServiceMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]shared.ServiceRow, maxLines int) string {
 	title := shared.StyleHeader.Render("SERVICE MATRIX")
 	if len(nodes) == 0 {
 		return title + "\n" + shared.StyleMuted.Render("No nodes")
 	}
 
 	// Build service lookup per node
-	svcByNodeAndID := make(map[string]map[string]serviceRow)
+	svcByNodeAndID := make(map[string]map[string]shared.ServiceRow)
 	for hostname, svcs := range servicesByNode {
-		svcMap := make(map[string]serviceRow)
+		svcMap := make(map[string]shared.ServiceRow)
 		for _, s := range svcs {
 			svcMap[s.ServiceID] = s
 		}

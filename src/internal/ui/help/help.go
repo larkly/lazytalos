@@ -162,6 +162,7 @@ var allSections = []helpSection{
 		{"?", "Toggle help (? context, ?? full)"},
 		{"C", "Switch cluster context"},
 		{"Ctrl+,", "View talosconfig"},
+		{"Ctrl+G", "Multi-cluster grid overlay"},
 		{"1–8", "Switch to tab by number"},
 		{"← / →", "Previous / next tab"},
 		{"Ctrl+R", "Force refresh"},

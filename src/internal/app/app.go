@@ -13,6 +13,7 @@ import (
 	"github.com/larkly/lazytalos/internal/talos"
 	"github.com/larkly/lazytalos/internal/update"
 	"github.com/larkly/lazytalos/internal/cluster"
+	"github.com/larkly/lazytalos/internal/ui/clustergrid"
 	"github.com/larkly/lazytalos/internal/ui/configeditor"
 	"github.com/larkly/lazytalos/internal/ui/containers"
 	"github.com/larkly/lazytalos/internal/ui/contextpicker"
@@ -103,6 +104,10 @@ type Model struct {
 	// Upgrade wizard overlay
 	upgradeWizard  upgradeui.Model
 	showingUpgrade bool
+
+	// Multi-cluster grid overlay
+	clusterGrid clustergrid.Model
+	showingGrid bool
 
 	// Selection (for bulk node ops)
 	selectedNodes map[string]bool
@@ -277,6 +282,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Multi-cluster grid overlay: route all messages to it while active.
+	if m.showingGrid {
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			m.width = msg.Width
+			m.height = msg.Height
+			m.statusBar.Width = m.width
+			m.clusterGrid.SetSize(m.width, m.contentHeight())
+			return m, nil
+		case clustergrid.ClosedMsg:
+			m.clusterGrid.Close()
+			m.showingGrid = false
+			if msg.Selected != "" && msg.Selected != m.contextName {
+				return m.drillDownToContext(msg.Selected)
+			}
+			return m, nil
+		default:
+			var cmd tea.Cmd
+			m.clusterGrid, cmd = m.clusterGrid.Update(msg)
+			return m, cmd
+		}
+	}
+
 	// Upgrade wizard overlay: route all messages to it while active.
 	if m.showingUpgrade {
 		switch msg := msg.(type) {
@@ -382,6 +410,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, shared.Keys.ConfigView) && m.view != viewContextPicker:
 			m.configView = m.configView.Toggle()
 			return m, nil
+		case key.Matches(msg, shared.Keys.ClusterGrid) && m.view != viewContextPicker && m.client != nil:
+			m.clusterGrid = clustergrid.New(m.talosconfig, m.client, m.contextName)
+			m.clusterGrid.SetSize(m.width, m.contentHeight())
+			m.showingGrid = true
+			m.statusBar.Hint = m.clusterGrid.Hints()
+			return m, m.clusterGrid.Init()
 		}
 
 		// Tab switching (only from top-level views)
@@ -580,6 +614,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case modal.ResetCancelledMsg:
 		m.activeModal = modalNone
 		return m, nil
+
+	case clustergrid.CardReadyMsg, clustergrid.CardErrMsg:
+		// Route stray grid-fetch results to the grid model so any carried
+		// clients get closed even after the overlay dismissed.
+		var cmd tea.Cmd
+		m.clusterGrid, cmd = m.clusterGrid.Update(msg)
+		return m, cmd
 
 	case shared.LogLineMsg, shared.LogStreamEndedMsg:
 		// Always route log messages to the logviewer, even if it's not active.

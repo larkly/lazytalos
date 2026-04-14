@@ -16,6 +16,17 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) viewContent() string {
+	// Multi-cluster grid overlay has highest priority.
+	if m.showingGrid {
+		content := m.clusterGrid.View()
+		contentHeight := m.height - 1
+		if contentHeight < 0 {
+			contentHeight = 0
+		}
+		padded := lipgloss.NewStyle().Height(contentHeight).MaxHeight(contentHeight).Render(content)
+		return padded + "\n" + m.statusBar.Render()
+	}
+
 	// Upgrade wizard overlay has highest priority.
 	if m.showingUpgrade {
 		return m.upgradeWizard.View()
