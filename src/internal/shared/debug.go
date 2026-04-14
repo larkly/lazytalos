@@ -23,7 +23,10 @@ func EnableDebug() error {
 		return fmt.Errorf("determine user cache dir: %w", err)
 	}
 	dir := filepath.Join(cacheDir, "lazytalos")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// Restrict to owner-only: the debug log may capture machine config
+	// YAML, error messages wrapping credentials, and other sensitive
+	// data that shouldn't be readable by other local users.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	path := filepath.Join(dir, "debug.log")

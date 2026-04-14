@@ -12,6 +12,7 @@ import (
 	"github.com/larkly/lazytalos/internal/app"
 	"github.com/larkly/lazytalos/internal/config"
 	"github.com/larkly/lazytalos/internal/shared"
+	"github.com/larkly/lazytalos/internal/talos"
 )
 
 var version = "dev"
@@ -56,6 +57,19 @@ func main() {
 			os.Exit(1)
 		}
 		talosconfig = filepath.Join(home, ".talos", "config")
+	}
+	talosconfig = filepath.Clean(talosconfig)
+
+	// Fail fast if the path doesn't point at a real file (symlinks ok as
+	// long as the target resolves to a regular file).
+	if err := talos.CheckTalosconfigFile(talosconfig); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	// Warn (but don't refuse) on group/world-readable talosconfig files —
+	// the file holds the cluster-admin mTLS key.
+	if w := talos.CheckTalosconfigPerms(talosconfig); w != "" {
+		fmt.Fprintln(os.Stderr, w)
 	}
 
 	if debug {
