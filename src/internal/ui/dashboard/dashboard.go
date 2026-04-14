@@ -347,7 +347,7 @@ func (m Model) fetchServices() tea.Cmd {
 			}
 			byNode[hostname] = svcs
 		}
-		return servicesLoadedMsg{servicesByNode: byNode}
+		return servicesLoadedMsg{servicesByNode: byNode, err: err}
 	}
 }
 
