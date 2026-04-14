@@ -36,6 +36,7 @@ func (m Model) switchToContextPicker() (Model, tea.Cmd) {
 	m.contextPicker = contextpicker.New(contexts, m.contextName, err)
 	m.contextPicker.SetSize(m.width, m.height)
 	m.view = viewContextPicker
+	m.autoSelect = ""
 	m.statusBar.CurrentView = "contextpicker"
 	m.statusBar.Hint = "Select a context to connect"
 	m.statusBar.Connected = false
