@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"charm.land/bubbletea/v2"
 	"github.com/larkly/lazytalos/internal/shared"
@@ -9,11 +10,18 @@ import (
 	"github.com/larkly/lazytalos/internal/ui/contextpicker"
 )
 
+// connectTimeout bounds the initial gRPC dial + TLS handshake. Without it a
+// wedged endpoint (or slow DNS) would block the connect Cmd indefinitely
+// with no way for the user to recover short of killing the process.
+const connectTimeout = 15 * time.Second
+
 func (m Model) connectToContext(contextName string) tea.Cmd {
 	shared.Debugf("[app] connectToContext: start context=%s", contextName)
 	talosconfig := m.talosconfig
 	return func() tea.Msg {
-		client, err := talos.Connect(context.Background(), talosconfig, contextName)
+		ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+		defer cancel()
+		client, err := talos.Connect(ctx, talosconfig, contextName)
 		if err != nil {
 			shared.Debugf("[app] connectToContext: error: %v", err)
 			return shared.ClientConnectErrMsg{Err: err}
