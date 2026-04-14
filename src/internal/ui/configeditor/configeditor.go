@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
@@ -292,6 +293,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return m, cmd
 }
 
+// Timeouts for the config editor's backing gRPC calls. Validation is
+// typically fast (server-side only); apply uploads the machine config and
+// needs more headroom, especially on slower links.
+const (
+	configValidateTimeout = 30 * time.Second
+	configApplyTimeout    = 60 * time.Second
+)
+
 func (m Model) doApply() (Model, tea.Cmd) {
 	m.showApplyPicker = false
 	m.status = editorApplying
@@ -300,7 +309,9 @@ func (m Model) doApply() (Model, tea.Cmd) {
 	node := m.node
 	client := m.client
 	return m, func() tea.Msg {
-		err := config.ApplyConfig(context.Background(), client, node, yamlStr, mode)
+		ctx, cancel := context.WithTimeout(context.Background(), configApplyTimeout)
+		defer cancel()
+		err := config.ApplyConfig(ctx, client, node, yamlStr, mode)
 		return applyResultMsg{err: err}
 	}
 }
@@ -310,7 +321,9 @@ func (m Model) cmdValidate() tea.Cmd {
 	node := m.node
 	client := m.client
 	return func() tea.Msg {
-		errs, err := config.ValidateConfig(context.Background(), client, node, yamlStr)
+		ctx, cancel := context.WithTimeout(context.Background(), configValidateTimeout)
+		defer cancel()
+		errs, err := config.ValidateConfig(ctx, client, node, yamlStr)
 		return validateResultMsg{errs: errs, err: err}
 	}
 }
@@ -323,7 +336,9 @@ func (m Model) cmdValidateThenPick() tea.Cmd {
 	node := m.node
 	client := m.client
 	return func() tea.Msg {
-		errs, err := config.ValidateConfig(context.Background(), client, node, yamlStr)
+		ctx, cancel := context.WithTimeout(context.Background(), configValidateTimeout)
+		defer cancel()
+		errs, err := config.ValidateConfig(ctx, client, node, yamlStr)
 		return validateResultMsg{errs: errs, err: err, openPickerOnClean: true}
 	}
 }
