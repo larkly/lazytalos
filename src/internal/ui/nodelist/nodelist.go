@@ -329,7 +329,7 @@ func (m Model) updateFilter(msg tea.KeyMsg) (Model, tea.Cmd) {
 func (m Model) updateDetail(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, shared.Keys.Back):
-		m.cancelDetailStreams()
+		m.CancelDetailStreams()
 		m.detailView = false
 	case key.Matches(msg, shared.Keys.LogFollow):
 		m.detailFollow = !m.detailFollow
@@ -1030,7 +1030,10 @@ func (m *Model) startDetailLogStreams() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (m *Model) cancelDetailStreams() {
+// CancelDetailStreams cancels any live per-service log tails held by the
+// detail view. Safe to call from app-level teardown (e.g. context switch)
+// to prevent goroutine leaks after the underlying client is closed.
+func (m *Model) CancelDetailStreams() {
 	for svc, s := range m.detailStreams {
 		s.cancel()
 		delete(m.detailStreams, svc)
