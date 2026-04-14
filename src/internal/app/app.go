@@ -450,7 +450,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleConfirmedAction(msg)
 
 	case shared.NodeActionMsg:
-		shared.Debugf("[app] action completed: %s on %v", msg.Action, msg.Nodes)
+		shared.Debugf("[app] action result: %s ok=%v failures=%v", msg.Action, msg.Nodes, msg.Failures)
+		if len(msg.Failures) > 0 {
+			m.errModal = modal.NewError(msg.Action+" partially failed", formatPartialFailure(msg.Nodes, msg.Failures))
+			m.errModal.SetSize(m.width, m.height)
+			m.activeModal = modalError
+			return m.forceRefreshActiveView()
+		}
 		m.statusBar.Hint = msg.Action + " completed"
 		return m.forceRefreshActiveView()
 

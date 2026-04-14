@@ -2,7 +2,10 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"charm.land/bubbletea/v2"
@@ -11,23 +14,64 @@ import (
 	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
 )
 
+// applyPerNode runs fn for each node and partitions the results into the
+// list of succeeded nodes and a map of per-node failures. Unlike a naive
+// loop, it never aborts on the first error — every node gets a turn. The
+// succeeded slice preserves input order; the failures map is order-free.
+func applyPerNode(nodes []string, fn func(string) error) ([]string, map[string]error) {
+	var succeeded []string
+	var failures map[string]error
+	for _, node := range nodes {
+		if err := fn(node); err != nil {
+			if failures == nil {
+				failures = make(map[string]error, len(nodes))
+			}
+			failures[node] = err
+			continue
+		}
+		succeeded = append(succeeded, node)
+	}
+	return succeeded, failures
+}
+
+// formatPartialFailure builds a user-facing error listing per-node failures
+// (and, when useful, the successes alongside them). Keys are sorted so the
+// output is deterministic.
+func formatPartialFailure(succeeded []string, failures map[string]error) error {
+	if len(failures) == 0 {
+		return nil
+	}
+	var sb strings.Builder
+	keys := make([]string, 0, len(failures))
+	for k := range failures {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Fprintf(&sb, "%s: %v\n", k, failures[k])
+	}
+	if len(succeeded) > 0 {
+		fmt.Fprintf(&sb, "(succeeded: %s)", strings.Join(succeeded, ", "))
+	}
+	return errors.New(strings.TrimRight(sb.String(), "\n"))
+}
+
 func (m Model) rebootNodes(nodes []string) tea.Cmd {
 	client := m.client
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		for _, node := range nodes {
+		succeeded, failures := applyPerNode(nodes, func(node string) error {
 			nodeCtx := nodeContext(ctx, node)
 			_, err := client.C.MachineClient.Reboot(nodeCtx, &machine.RebootRequest{})
-			if err != nil {
-				return shared.NodeActionErrMsg{
-					Action: "reboot",
-					Err:    fmt.Errorf("reboot node %s: %w", node, err),
-				}
-			}
+			return err
+		})
+		return shared.NodeActionMsg{
+			Action:   "reboot",
+			Nodes:    succeeded,
+			Failures: failures,
 		}
-		return shared.NodeActionMsg{Action: "reboot", Nodes: nodes}
 	}
 }
 
@@ -37,17 +81,16 @@ func (m Model) shutdownNodes(nodes []string) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		for _, node := range nodes {
+		succeeded, failures := applyPerNode(nodes, func(node string) error {
 			nodeCtx := nodeContext(ctx, node)
 			_, err := client.C.MachineClient.Shutdown(nodeCtx, &machine.ShutdownRequest{})
-			if err != nil {
-				return shared.NodeActionErrMsg{
-					Action: "shutdown",
-					Err:    fmt.Errorf("shutdown node %s: %w", node, err),
-				}
-			}
+			return err
+		})
+		return shared.NodeActionMsg{
+			Action:   "shutdown",
+			Nodes:    succeeded,
+			Failures: failures,
 		}
-		return shared.NodeActionMsg{Action: "shutdown", Nodes: nodes}
 	}
 }
 

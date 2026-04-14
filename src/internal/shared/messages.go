@@ -21,10 +21,14 @@ type ClientConnectErrMsg struct {
 // TickMsg is sent by the auto-refresh ticker.
 type TickMsg struct{}
 
-// NodeActionMsg is sent to trigger a write action on one or more nodes.
+// NodeActionMsg reports the outcome of a batched write action across one or
+// more nodes. Nodes holds the identifiers that succeeded; Failures maps
+// identifiers that failed to their error. A message may report partial
+// success (both slices non-empty).
 type NodeActionMsg struct {
-	Action string
-	Nodes  []string
+	Action   string
+	Nodes    []string
+	Failures map[string]error
 }
 
 // NodeActionErrMsg is sent when a node write action fails.
