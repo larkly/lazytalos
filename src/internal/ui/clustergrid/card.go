@@ -119,7 +119,7 @@ func joinWithGutter(cards []string) string {
 func renderCard(c card, selected bool) string {
 	borderColor := shared.ColorSecondary
 	if selected {
-		borderColor = shared.ColorPrimary
+		borderColor = shared.ColorSelection
 	}
 	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
 
