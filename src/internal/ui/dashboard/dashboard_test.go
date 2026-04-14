@@ -21,7 +21,7 @@ func TestRenderNodeDotMatrix_WithNodes(t *testing.T) {
 		{Hostname: "cp-1", MachineType: "controlplane"},
 		{Hostname: "worker-1", MachineType: "worker"},
 	}
-	svcs := map[string][]serviceRow{
+	svcs := map[string][]shared.ServiceRow{
 		"cp-1":     {{ServiceID: "apid", State: "Running", Health: "OK"}},
 		"worker-1": {{ServiceID: "apid", State: "Running", Health: "OK"}},
 	}
@@ -43,7 +43,7 @@ func TestRenderNodeDotMatrix_OfflineNode(t *testing.T) {
 		{Hostname: "cp-1", MachineType: "controlplane"},
 		{Hostname: "offline-1", MachineType: "worker"},
 	}
-	svcs := map[string][]serviceRow{
+	svcs := map[string][]shared.ServiceRow{
 		"cp-1": {{ServiceID: "apid", State: "Running", Health: "OK"}},
 		// offline-1 has no service data
 	}
@@ -58,7 +58,7 @@ func TestRenderNodeDotMatrix_HighMemory(t *testing.T) {
 	nodes := []cluster.NodeInfo{
 		{Hostname: "cp-1", MachineType: "controlplane"},
 	}
-	svcs := map[string][]serviceRow{
+	svcs := map[string][]shared.ServiceRow{
 		"cp-1": {{ServiceID: "apid", State: "Running", Health: "OK"}},
 	}
 	mem := map[string]shared.MemStats{
@@ -76,7 +76,7 @@ func TestRenderNodeDotMatrix_HighCPU(t *testing.T) {
 	nodes := []cluster.NodeInfo{
 		{Hostname: "cp-1", MachineType: "controlplane"},
 	}
-	svcs := map[string][]serviceRow{
+	svcs := map[string][]shared.ServiceRow{
 		"cp-1": {{ServiceID: "apid", State: "Running", Health: "OK"}},
 	}
 	cpu := map[string]resources.CPUStats{
@@ -94,7 +94,7 @@ func TestRenderServiceMatrix_CPvsWorker(t *testing.T) {
 		{Hostname: "test-cp-1", MachineType: "controlplane"},
 		{Hostname: "test-w-1", MachineType: "worker"},
 	}
-	servicesByNode := map[string][]serviceRow{
+	servicesByNode := map[string][]shared.ServiceRow{
 		"test-cp-1": {
 			{ServiceID: "etcd", State: "Running", Health: "OK"},
 			{ServiceID: "trustd", State: "Running", Health: "OK"},

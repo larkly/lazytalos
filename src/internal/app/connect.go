@@ -34,6 +34,25 @@ func (m Model) connectToContext(contextName string) tea.Cmd {
 	}
 }
 
+// drillDownToContext tears down any active client/streams and dispatches
+// a connect command for `name`. The existing ClientConnectedMsg handler
+// will land on the Dashboard tab and start the refresh tick.
+func (m Model) drillDownToContext(name string) (Model, tea.Cmd) {
+	shared.Debugf("[app] drillDownToContext: %s", name)
+	m.logViewer.CleanupStreams()
+	m.nodeList.CancelDetailStreams()
+	if m.client != nil {
+		_ = m.client.Close()
+		m.client = nil
+	}
+	m.tabInited = make([]bool, len(m.tabs))
+	m.contextName = name
+	m.statusBar.Context = name
+	m.statusBar.Connected = false
+	m.statusBar.Hint = "Connecting to " + name + "..."
+	return m, m.connectToContext(name)
+}
+
 func (m Model) switchToContextPicker() (Model, tea.Cmd) {
 	contexts, _, err := talos.ListContextNames(m.talosconfig)
 	if err != nil {

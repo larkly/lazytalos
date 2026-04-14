@@ -55,6 +55,9 @@ type KeyMap struct {
 	// Settings overlay
 	Settings key.Binding // ctrl+k
 
+	// Multi-cluster grid overlay
+	ClusterGrid key.Binding // ctrl+g
+
 	// Confirmation
 	Confirm key.Binding // ctrl+s
 	// Deny shares the same key as Back (Esc); in modal context use Deny, in navigation context use Back to indicate intent.
@@ -255,5 +258,9 @@ var Keys = KeyMap{
 	Settings: key.NewBinding(
 		key.WithKeys("ctrl+k"),
 		key.WithHelp("ctrl+k", "settings"),
+	),
+	ClusterGrid: key.NewBinding(
+		key.WithKeys("ctrl+g"),
+		key.WithHelp("ctrl+g", "multi-cluster grid"),
 	),
 }

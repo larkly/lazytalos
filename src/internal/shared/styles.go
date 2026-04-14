@@ -8,15 +8,17 @@ import (
 
 // Color palette (Solarized Dark).
 var (
-	ColorPrimary   color.Color
-	ColorSecondary color.Color
-	ColorSuccess   color.Color
-	ColorWarning   color.Color
-	ColorError     color.Color
-	ColorMuted     color.Color
-	ColorBg        color.Color
-	ColorFg        color.Color
-	ColorHighlight color.Color
+	ColorPrimary     color.Color
+	ColorSecondary   color.Color
+	ColorSuccess     color.Color
+	ColorWarning     color.Color
+	ColorError       color.Color
+	ColorMuted       color.Color
+	ColorBg          color.Color
+	ColorFg          color.Color
+	ColorHighlight   color.Color
+	ColorSelection   color.Color // accent for selected rows/cards (borders)
+	ColorSelectionBg color.Color // dimmed variant for selected row backgrounds
 
 	// NodeColors provides 6 distinct colors for log viewer node identification.
 	NodeColors []color.Color
@@ -58,6 +60,8 @@ func init() {
 	ColorBg = lipgloss.Color("#002B36")
 	ColorFg = lipgloss.Color("#839496")
 	ColorHighlight = lipgloss.Color("#FDF6E3")
+	ColorSelection = lipgloss.Color("#268BD2")
+	ColorSelectionBg = lipgloss.Color("#1A4F70")
 	NodeColors = []color.Color{
 		lipgloss.Color("#268BD2"),
 		lipgloss.Color("#2AA198"),
@@ -87,8 +91,9 @@ func RebuildStyles() {
 		Foreground(ColorSecondary)
 
 	StyleSelected = lipgloss.NewStyle().
-		Background(lipgloss.Color("#073642")).
-		Foreground(ColorHighlight)
+		Background(ColorSelectionBg).
+		Foreground(ColorHighlight).
+		Bold(true)
 
 	StyleMuted = lipgloss.NewStyle().
 		Foreground(ColorMuted)
