@@ -465,7 +465,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Child view wants to show a confirm modal for a node action.
 		shared.Debugf("[app] node action request: %s on %v", msg.Action, msg.NodeHostnames)
 		nodes := make([]modal.NodeRef, len(msg.NodeHostnames))
-		hasCP := false
 		for i, h := range msg.NodeHostnames {
 			isCP := false
 			if i < len(msg.IsControlPlane) {
@@ -476,11 +475,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				name = msg.NodeNames[i]
 			}
 			nodes[i] = modal.NodeRef{ID: h, Name: name, IsControlPlane: isCP}
-			if isCP {
-				hasCP = true
-			}
 		}
-		_ = hasCP
 		if len(nodes) == 1 {
 			m.confirm = modal.NewConfirm(msg.Action, nodes[0].ID)
 		} else {
