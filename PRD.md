@@ -13,11 +13,11 @@
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| Phase 1: MVP | Not started | talosconfig connect, context picker, dashboard, node list, services, multi-node log viewer |
-| Phase 2: Resources | Not started | Containers tab, Network tab, Storage tab |
-| Phase 3: etcd + Config | Not started | etcd tab, per-node inline config editor with validation |
-| Phase 4: Upgrades + Dangerous Ops | Not started | Sequential upgrade orchestration, reset/wipe with heavy confirmation |
-| Phase 5: Quality of Life | Not started | Filtering, sorting, clipboard, self-update check, config view |
+| Phase 1: MVP | Complete | Context picker (auto-select + interactive + `C` to switch), Dashboard (node health matrix, service status matrix, event stream), Nodes (multi-select, filter, detail view, reboot/shutdown with CP warnings), Services (group-by-node, filter, restart, event history), Logs (multi-node streaming, follow mode, 6-color node identification, container-scoped pre-selection), confirmation modals (single/bulk with CP warnings, typed-input for dangerous ops), CLI flags (`--talosconfig`, `--context`, `--pick-context`, `--refresh`, `--plain`, `--debug`, `--version`) |
+| Phase 2: Resources | Complete | Containers tab (list, filter, detail view, `Ctrl+L` to view logs), Network tab (Addresses/Routes/DNS sub-tabs via COSI API), Storage tab (Devices/Volumes sub-tabs) |
+| Phase 3: etcd + Config | Complete | etcd tab (Members/Config sub-tabs, `Ctrl+M` remove member with typed-ID confirmation), Config editor (`Ctrl+E` from node detail, textarea with line numbers, `Ctrl+V` validate, apply mode picker: reboot/no-reboot/staged) |
+| Phase 4: Upgrades + Dangerous Ops | Complete | Upgrade wizard (`Ctrl+U`, 6-step: node selection → image → options → order preview → typed confirm → execution with pause/abort), node reset (`Ctrl+X`, two-step: typed hostname → graceful/immediate mode), health polling between nodes via `Version()` RPC. Deferred: `Ctrl+W` wipe (too dangerous per PRD), `--preserve` flag (machinery client API limitation) |
+| Phase 5: Quality of Life | Complete | Sort cycling (`s` on Nodes/Services/Containers), help overlay (`?`), config view (`Ctrl+,`), clipboard yank (`y`/`Y` to status bar), self-update check (`--no-update-check`), diagnostics inline in Dashboard, filtering (`/`), `--plain` mode, `--debug` logging |
 
 ## Problem Statement
 
