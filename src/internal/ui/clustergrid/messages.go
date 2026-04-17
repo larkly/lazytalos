@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/larkly/lazytalos/internal/cluster"
+	"github.com/larkly/lazytalos/internal/resources"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
 )
@@ -23,6 +24,8 @@ type clusterSummary struct {
 	WorkerCount      int
 	Nodes            []cluster.NodeInfo
 	ServicesByNode   map[string][]shared.ServiceRow
+	MemoryByNode     map[string]shared.MemStats
+	CPUByNode        map[string]resources.CPUStats
 	FailedCount      int
 	UnreachableCount int
 	FetchedAt        time.Time

@@ -175,20 +175,33 @@ func (m Model) contentHeight() int {
 }
 
 func (m Model) renderTabBar() string {
-	var tabs []string
+	sep := lipgloss.NewStyle().Foreground(shared.ColorMuted).Render("|")
+	activeStyle := lipgloss.NewStyle().
+		Background(shared.ColorPrimary).
+		Foreground(shared.ColorBg).
+		Bold(true)
+	mutedStyle := lipgloss.NewStyle().Foreground(shared.ColorMuted)
+
+	// Leading "1:Clusters" chip for the multi-cluster grid overlay. Highlights
+	// when the grid is the current view; otherwise muted so the shortcut is
+	// discoverable from any tab.
+	var gridChip string
+	if m.showingGrid {
+		gridChip = activeStyle.Render(" 1:Clusters ")
+	} else {
+		gridChip = mutedStyle.Render(" 1:Clusters ")
+	}
+
+	tabs := []string{gridChip}
 	for i, td := range m.tabs {
-		label := fmt.Sprintf(" %d:%s ", i+1, td.Name)
-		if i == m.activeTab {
-			tabs = append(tabs, lipgloss.NewStyle().
-				Background(shared.ColorPrimary).
-				Foreground(shared.ColorBg).
-				Bold(true).
-				Render(label))
+		label := fmt.Sprintf(" %d:%s ", i+2, td.Name)
+		// Highlight the active tab only when we're actually on it (not when
+		// the grid overlay is covering it).
+		if i == m.activeTab && !m.showingGrid {
+			tabs = append(tabs, activeStyle.Render(label))
 		} else {
-			tabs = append(tabs, lipgloss.NewStyle().
-				Foreground(shared.ColorMuted).
-				Render(label))
+			tabs = append(tabs, mutedStyle.Render(label))
 		}
 	}
-	return strings.Join(tabs, lipgloss.NewStyle().Foreground(shared.ColorMuted).Render("|"))
+	return strings.Join(tabs, sep)
 }

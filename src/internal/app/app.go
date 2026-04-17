@@ -138,10 +138,12 @@ type Model struct {
 	updateCheckInterval time.Duration
 
 	// State
-	restart        bool
-	autoSelect     string // context to auto-select on Init
-	version        string
-	latestVersion  string // set when a newer release is detected
+	restart       bool
+	autoSelect    string // context to auto-select on Init
+	autoOpenGrid  bool   // open multi-cluster grid on Init (>1 contexts)
+	pendingTab    int    // tab idx to land on after the next ClientConnectedMsg; 0 = Dashboard (default)
+	version       string
+	latestVersion string // set when a newer release is detected
 }
 
 // Options configures the application.
@@ -207,19 +209,32 @@ func New(opts Options) Model {
 		m.updateCheckInterval = 24 * time.Hour
 	}
 
-	// Auto-select if --context flag is set, or exactly one context and not forced to pick
-	if opts.Context != "" && !opts.PickContext {
+	// Auto-select if --context flag is set, or exactly one context and not
+	// forced to pick. With >1 contexts and no explicit pick, default to the
+	// multi-cluster grid so the user sees health across every cluster before
+	// drilling into one.
+	switch {
+	case opts.Context != "" && !opts.PickContext:
 		m.autoSelect = opts.Context
 		m.contextPicker = contextpicker.New(contexts, m.contextName, err)
-	} else if err == nil && len(contexts) == 1 && !opts.PickContext {
+	case err == nil && len(contexts) == 1 && !opts.PickContext:
 		m.autoSelect = contexts[0]
 		m.contextPicker = contextpicker.New(contexts, m.contextName, nil)
-	} else {
+	case err == nil && len(contexts) > 1 && !opts.PickContext:
+		m.contextPicker = contextpicker.New(contexts, m.contextName, nil)
+		m.clusterGrid = clustergrid.New(opts.Talosconfig, nil, "")
+		m.showingGrid = true
+		m.autoOpenGrid = true
+	default:
 		m.contextPicker = contextpicker.New(contexts, m.contextName, err)
 	}
 
 	m.statusBar.CurrentView = "contextpicker"
-	m.statusBar.Hint = "Select a context to connect"
+	if m.autoOpenGrid {
+		m.statusBar.Hint = m.clusterGrid.Hints()
+	} else {
+		m.statusBar.Hint = "Select a context to connect"
+	}
 
 	return m
 }
@@ -233,6 +248,10 @@ func (m Model) Init() tea.Cmd {
 		cmds = append(cmds, func() tea.Msg {
 			return shared.ContextSelectedMsg{ContextName: name}
 		})
+	}
+
+	if m.autoOpenGrid {
+		cmds = append(cmds, m.clusterGrid.Init())
 	}
 
 	if !m.noUpdateCheck {
@@ -298,6 +317,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.drillDownToContext(msg.Selected)
 			}
 			return m, nil
+		case tea.KeyPressMsg:
+			// Quit from the grid (app-wide shortcut) so the user doesn't
+			// have to leave this overlay first.
+			if key.Matches(msg, shared.Keys.Quit) {
+				return m, tea.Quit
+			}
+			// Digit keys 2-9 drill into the focused cluster and land on
+			// that tab directly. The grid itself is "1", so 2 = Dashboard,
+			// 3 = Nodes, ..., 9 = etcd.
+			if s := msg.String(); len(s) == 1 && s[0] >= '2' && s[0] <= '9' {
+				tabIdx := int(s[0] - '2')
+				if tabIdx < len(m.tabs) {
+					if sel := m.clusterGrid.FocusedContext(); sel != "" {
+						m.clusterGrid.Close()
+						m.showingGrid = false
+						m.pendingTab = tabIdx
+						if sel == m.contextName && m.client != nil {
+							return m.switchTab(tabIdx)
+						}
+						return m.drillDownToContext(sel)
+					}
+				}
+			}
+			var cmd tea.Cmd
+			m.clusterGrid, cmd = m.clusterGrid.Update(msg)
+			return m, cmd
 		default:
 			var cmd tea.Cmd
 			m.clusterGrid, cmd = m.clusterGrid.Update(msg)
@@ -418,10 +463,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.clusterGrid.Init()
 		}
 
-		// Tab switching (only from top-level views)
+		// Tab switching (only from top-level views). Digits 2-9 map to the
+		// eight resource tabs; "1" is reserved as the multi-cluster grid
+		// shortcut and handled above.
 		if m.isTopLevelView() {
-			if s := msg.String(); len(s) == 1 && s[0] >= '1' && s[0] <= '8' {
-				idx := int(s[0] - '1')
+			if s := msg.String(); len(s) == 1 && s[0] >= '2' && s[0] <= '9' {
+				idx := int(s[0] - '2')
 				if idx < len(m.tabs) {
 					return m.switchTab(idx)
 				}
@@ -457,8 +504,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusBar.Context = msg.ContextName
 		m.statusBar.Connected = true
 		m.configView.SetActiveContext(msg.ContextName)
-		// Switch to dashboard tab (first tab)
-		m, cmd := m.switchTab(0)
+		// Land on the pending tab (set by a grid drill-down) or Dashboard by
+		// default. Reset the pending slot so a later reconnect goes back to
+		// Dashboard unless another drill-down re-arms it.
+		target := m.pendingTab
+		if target < 0 || target >= len(m.tabs) {
+			target = 0
+		}
+		m.pendingTab = 0
+		m, cmd := m.switchTab(target)
 		return m, tea.Batch(cmd, m.refreshTickCmd())
 
 	case shared.ClientConnectErrMsg:

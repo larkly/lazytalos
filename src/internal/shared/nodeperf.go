@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"charm.land/lipgloss/v2"
 )
 
 // Configurable threshold vars for resource bar coloring.
@@ -72,6 +74,44 @@ func RenderCPUBar(pct float64, width int) string {
 	bar := barStyle.Render(strings.Repeat("█", filled)) +
 		StyleMuted.Render(strings.Repeat("░", empty))
 	return fmt.Sprintf("%s %s", pctStr, bar)
+}
+
+// MemUsedPct computes memory usage as a fraction in [0,1]. Returns 0 when
+// TotalKB is zero (stats unknown) so callers can treat it as "no signal".
+func MemUsedPct(m MemStats) float64 {
+	if m.TotalKB == 0 {
+		return 0
+	}
+	return float64(m.TotalKB-m.AvailableKB) / float64(m.TotalKB)
+}
+
+// NodeDotStyle picks the icon and lipgloss style for a single node-health dot
+// using the same four-state logic shared by the dashboard node matrix and the
+// multi-cluster grid cards.
+//
+//   - hasSvcs:    service data was returned for this node.
+//   - hasAnyData: service data was returned for AT LEAST ONE node in the
+//     cluster. Together with !hasSvcs this distinguishes "this node is
+//     unreachable" from "services were never fetched for the cluster".
+//   - failedSvc:  any service on this node has Health == Failed.
+//   - memPct:     memory usage fraction 0..1, or 0 when unknown.
+//   - cpuPct:     CPU usage fraction 0..1, or 0 when unknown.
+//
+// Thresholds are MemCriticalPct / MemWarningPct / CPUWarningPct.
+func NodeDotStyle(hasSvcs, hasAnyData, failedSvc bool, memPct, cpuPct float64) (string, lipgloss.Style) {
+	if !hasSvcs && hasAnyData {
+		return "○", StyleMuted
+	}
+	if failedSvc {
+		return "●", StyleError
+	}
+	if memPct > MemCriticalPct {
+		return "●", StyleError
+	}
+	if cpuPct > CPUWarningPct || memPct > MemWarningPct {
+		return "●", StyleWarning
+	}
+	return "●", StyleSuccess
 }
 
 // FormatUptime formats a duration as a compact uptime string like "2d3h" or "1h20m".
