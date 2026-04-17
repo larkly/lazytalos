@@ -16,9 +16,11 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) viewContent() string {
-	// Multi-cluster grid overlay has highest priority.
+	// Multi-cluster grid overlay has highest priority. Render the tab bar
+	// above it (with "0:Clusters" highlighted) so the user keeps the usual
+	// navigation context while browsing all clusters.
 	if m.showingGrid {
-		content := m.clusterGrid.View()
+		content := m.renderTabBar() + "\n" + m.clusterGrid.View()
 		contentHeight := m.height - 1
 		if contentHeight < 0 {
 			contentHeight = 0

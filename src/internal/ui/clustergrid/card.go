@@ -116,12 +116,19 @@ func joinWithGutter(cards []string) string {
 // The card is composed manually (top border with embedded title, 3 content
 // lines with side borders, bottom border) because we want a title band in
 // the top border rather than a separate header row.
+//
+// Selected cards use heavy box-drawing characters and a bright foreground so
+// the focused cluster is unmistakable against all-cyan defaults.
 func renderCard(c card, selected bool) string {
-	borderColor := shared.ColorSecondary
+	var (
+		borderColor = shared.ColorSecondary
+		tl, tr, bl, br, hz, vt = "╭", "╮", "╰", "╯", "─", "│"
+	)
 	if selected {
-		borderColor = shared.ColorSelection
+		borderColor = shared.ColorHighlight
+		tl, tr, bl, br, hz, vt = "┏", "┓", "┗", "┛", "━", "┃"
 	}
-	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor).Bold(selected)
 
 	innerW := cardWidth - 2 // space between the two vertical bars
 
@@ -130,10 +137,10 @@ func renderCard(c card, selected bool) string {
 	if c.summary != nil && c.summary.TalosVersion != "" {
 		right = c.summary.TalosVersion
 	}
-	titleBand := buildTitleBand(c.context, right, innerW)
-	top := borderStyle.Render("╭" + titleBand + "╮")
-	bottom := borderStyle.Render("╰" + strings.Repeat("─", innerW) + "╯")
-	vbar := borderStyle.Render("│")
+	titleBand := buildTitleBand(c.context, right, innerW, hz)
+	top := borderStyle.Render(tl + titleBand + tr)
+	bottom := borderStyle.Render(bl + strings.Repeat(hz, innerW) + br)
+	vbar := borderStyle.Render(vt)
 
 	// Three content lines.
 	bodyLines := renderCardBody(c, innerW)
@@ -156,9 +163,10 @@ func padToWidth(s string, w int) string {
 }
 
 // buildTitleBand formats a title strip sized to exactly `innerW` columns
-// visible width, using ─ as filler between left (context name) and right
-// (version) labels.
-func buildTitleBand(left, right string, innerW int) string {
+// visible width, using `hz` as filler between left (context name) and right
+// (version) labels. The fill character matches the surrounding border so the
+// band blends with the top edge.
+func buildTitleBand(left, right string, innerW int, hz string) string {
 	leftLabel := " " + shared.Truncate(left, innerW-4) + " "
 	rightLabel := ""
 	if right != "" {
@@ -168,7 +176,7 @@ func buildTitleBand(left, right string, innerW int) string {
 	if fillLen < 0 {
 		fillLen = 0
 	}
-	fill := strings.Repeat("─", fillLen)
+	fill := strings.Repeat(hz, fillLen)
 	return leftLabel + fill + rightLabel
 }
 
@@ -211,7 +219,9 @@ func renderCardBody(c card, innerW int) []string {
 }
 
 // renderDotRow produces a wrap-free row of colored dots representing node
-// health, trimmed to `maxWidth` visible columns.
+// health, trimmed to `maxWidth` visible columns. Uses shared.NodeDotStyle so
+// the grid's dots match the dashboard cluster-nodes panel exactly (error /
+// warn / ready / offline).
 func renderDotRow(s *clusterSummary, maxWidth int) string {
 	if s == nil || len(s.Nodes) == 0 {
 		return shared.StyleMuted.Render("no nodes")
@@ -225,24 +235,21 @@ func renderDotRow(s *clusterSummary, maxWidth int) string {
 		maxDots = len(s.Nodes)
 	}
 
+	hasAnyData := len(s.ServicesByNode) > 0
 	var dots []string
 	for i := 0; i < maxDots; i++ {
 		n := s.Nodes[i]
-		icon := "●"
-		style := shared.StyleSuccess
 		svcs, hasSvcs := s.ServicesByNode[n.Hostname]
-		switch {
-		case !hasSvcs && len(s.ServicesByNode) > 0:
-			icon = "○"
-			style = shared.StyleMuted
-		case hasSvcs:
-			for _, sv := range svcs {
-				if sv.Health == shared.HealthFailed {
-					style = shared.StyleError
-					break
-				}
+		failed := false
+		for _, sv := range svcs {
+			if sv.Health == shared.HealthFailed {
+				failed = true
+				break
 			}
 		}
+		memPct := shared.MemUsedPct(s.MemoryByNode[n.Hostname])
+		cpuPct := s.CPUByNode[n.Hostname].UsagePercent
+		icon, style := shared.NodeDotStyle(hasSvcs, hasAnyData, failed, memPct, cpuPct)
 		dots = append(dots, style.Render(icon))
 	}
 	return strings.Join(dots, " ")

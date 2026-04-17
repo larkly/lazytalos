@@ -607,40 +607,17 @@ func RenderNodeDotMatrix(nodes []cluster.NodeInfo, servicesByNode map[string][]s
 
 	var rowDots []string
 	for i, n := range nodes {
-		icon := "●"
-		style := shared.StyleSuccess
-
 		svcs, hasSvcs := servicesByNode[n.Hostname]
-		if !hasSvcs && hasAnyData {
-			// Unreachable
-			icon = "○"
-			style = shared.StyleMuted
-		} else if hasSvcs {
-			// Check for failed services
-			hasFailed := false
-			for _, s := range svcs {
-				if s.Health == "Failed" {
-					hasFailed = true
-					break
-				}
-			}
-			if hasFailed {
-				style = shared.StyleError
-			} else {
-				// Check resource warnings
-				mem, hasMem := memoryByNode[n.Hostname]
-				cpu, hasCPU := cpuByNode[n.Hostname]
-				memPct := 0.0
-				if hasMem && mem.TotalKB > 0 {
-					memPct = float64(mem.TotalKB-mem.AvailableKB) / float64(mem.TotalKB)
-				}
-				if memPct > shared.MemCriticalPct {
-					style = shared.StyleError
-				} else if (hasCPU && cpu.UsagePercent > shared.CPUWarningPct) || memPct > shared.MemWarningPct {
-					style = shared.StyleWarning
-				}
+		failed := false
+		for _, s := range svcs {
+			if s.Health == shared.HealthFailed {
+				failed = true
+				break
 			}
 		}
+		memPct := shared.MemUsedPct(memoryByNode[n.Hostname])
+		cpuPct := cpuByNode[n.Hostname].UsagePercent
+		icon, style := shared.NodeDotStyle(hasSvcs, hasAnyData, failed, memPct, cpuPct)
 
 		rowDots = append(rowDots, style.Render(icon))
 

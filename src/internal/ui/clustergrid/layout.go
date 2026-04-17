@@ -8,18 +8,6 @@ const (
 	headerHeight = 2 // title line + blank separator
 )
 
-// columns returns the number of columns that fit in the current width.
-func (m Model) columns() int {
-	if m.width <= 0 {
-		return 1
-	}
-	cols := (m.width + colGutter) / (cardWidth + colGutter)
-	if cols < 1 {
-		return 1
-	}
-	return cols
-}
-
 // computeGrid returns (cols, rows) for a given width and card count.
 // Exposed for tests.
 func computeGrid(width, count int) (cols, rows int) {

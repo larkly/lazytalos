@@ -173,10 +173,10 @@ func TestHintsNotEmpty(t *testing.T) {
 	}
 }
 
-// Sanity check that the ClusterGrid keybinding matches ctrl+g. This
-// guards against accidental key remapping in shared/keys.go.
+// Sanity check that the ClusterGrid keybinding matches "1". This guards
+// against accidental key remapping in shared/keys.go.
 func TestClusterGridKeyBinding(t *testing.T) {
-	if !key.Matches(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl}, shared.Keys.ClusterGrid) {
-		t.Error("expected shared.Keys.ClusterGrid to match ctrl+g")
+	if !key.Matches(tea.KeyPressMsg{Code: '1'}, shared.Keys.ClusterGrid) {
+		t.Error("expected shared.Keys.ClusterGrid to match '1'")
 	}
 }

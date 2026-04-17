@@ -111,20 +111,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 			sel := m.cards[m.cursor].context
 			return m, func() tea.Msg { return ClosedMsg{Selected: sel} }
-		case key.Matches(msg, shared.Keys.Left):
-			m.cursor = prevCursor(m.cursor, len(m.cards))
-		case key.Matches(msg, shared.Keys.Right):
+		case key.Matches(msg, shared.Keys.Tab):
 			m.cursor = nextCursor(m.cursor, len(m.cards))
-		case key.Matches(msg, shared.Keys.Up):
-			cols := m.columns()
-			if m.cursor-cols >= 0 {
-				m.cursor -= cols
-			}
-		case key.Matches(msg, shared.Keys.Down):
-			cols := m.columns()
-			if m.cursor+cols < len(m.cards) {
-				m.cursor += cols
-			}
+		case key.Matches(msg, shared.Keys.ShiftTab):
+			m.cursor = prevCursor(m.cursor, len(m.cards))
 		case msg.String() == "r":
 			m.currentGen++
 			return m, m.fanOutFetch()
@@ -180,7 +170,18 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 // Hints returns the status bar hint text for the grid overlay.
 func (m Model) Hints() string {
-	return "←↑↓→:nav  enter:connect  r:refresh  esc/ctrl+g:close"
+	return "tab/shift+tab:nav cards  enter:Dashboard  2-9:tab  r:refresh  esc/1:close  q:quit"
+}
+
+// FocusedContext returns the context name of the card currently under the
+// cursor, or "" when there are no cards. Exposed so the app can drill into
+// the focused cluster in response to keys the grid itself does not handle
+// (e.g. digit keys 1-8 that target a specific tab).
+func (m Model) FocusedContext() string {
+	if len(m.cards) == 0 || m.cursor < 0 || m.cursor >= len(m.cards) {
+		return ""
+	}
+	return m.cards[m.cursor].context
 }
 
 // fanOutFetch dispatches one fetch command per card, tagged with the grid's

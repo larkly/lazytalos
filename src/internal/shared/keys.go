@@ -56,7 +56,7 @@ type KeyMap struct {
 	Settings key.Binding // ctrl+k
 
 	// Multi-cluster grid overlay
-	ClusterGrid key.Binding // ctrl+g
+	ClusterGrid key.Binding // 1
 
 	// Confirmation
 	Confirm key.Binding // ctrl+s
@@ -116,36 +116,36 @@ var Keys = KeyMap{
 		key.WithHelp("shift+tab", "prev"),
 	),
 	Tab1: key.NewBinding(
-		key.WithKeys("1"),
-		key.WithHelp("1", "tab 1"),
+		key.WithKeys("2"),
+		key.WithHelp("2", "Dashboard"),
 	),
 	Tab2: key.NewBinding(
-		key.WithKeys("2"),
-		key.WithHelp("2", "tab 2"),
+		key.WithKeys("3"),
+		key.WithHelp("3", "Nodes"),
 	),
 	Tab3: key.NewBinding(
-		key.WithKeys("3"),
-		key.WithHelp("3", "tab 3"),
+		key.WithKeys("4"),
+		key.WithHelp("4", "Services"),
 	),
 	Tab4: key.NewBinding(
-		key.WithKeys("4"),
-		key.WithHelp("4", "tab 4"),
+		key.WithKeys("5"),
+		key.WithHelp("5", "Logs"),
 	),
 	Tab5: key.NewBinding(
-		key.WithKeys("5"),
-		key.WithHelp("5", "Containers"),
+		key.WithKeys("6"),
+		key.WithHelp("6", "Containers"),
 	),
 	Tab6: key.NewBinding(
-		key.WithKeys("6"),
-		key.WithHelp("6", "Network"),
+		key.WithKeys("7"),
+		key.WithHelp("7", "Network"),
 	),
 	Tab7: key.NewBinding(
-		key.WithKeys("7"),
-		key.WithHelp("7", "Storage"),
+		key.WithKeys("8"),
+		key.WithHelp("8", "Storage"),
 	),
 	Tab8: key.NewBinding(
-		key.WithKeys("8"),
-		key.WithHelp("8", "etcd"),
+		key.WithKeys("9"),
+		key.WithHelp("9", "etcd"),
 	),
 	SubTabPrev: key.NewBinding(
 		key.WithKeys("[", "<"),
@@ -260,7 +260,7 @@ var Keys = KeyMap{
 		key.WithHelp("ctrl+k", "settings"),
 	),
 	ClusterGrid: key.NewBinding(
-		key.WithKeys("ctrl+g"),
-		key.WithHelp("ctrl+g", "multi-cluster grid"),
+		key.WithKeys("1"),
+		key.WithHelp("1", "multi-cluster grid"),
 	),
 }
