@@ -7,11 +7,11 @@ A keyboard-driven terminal UI for Talos Linux clusters.
 </p>
 
 <p align="center">
-[Installation](#installation) &middot;
-[Features](#features) &middot;
-[Keybindings](#keybindings) &middot;
-[Configuration](#configuration) &middot;
-[License](#license)
+<a href="#installation">Installation</a> &middot;
+<a href="#features">Features</a> &middot;
+<a href="#keybindings">Keybindings</a> &middot;
+<a href="#configuration">Configuration</a> &middot;
+<a href="#license">License</a>
 </p>
 
 ---
