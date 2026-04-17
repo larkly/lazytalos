@@ -1,12 +1,18 @@
-# lazytalos
+<p align="center">
+  <img src="assets/lazytalos-logo.png" alt="LAZYSTACK" width="500">
+</p>
 
+<p align="center">
 A keyboard-driven terminal UI for Talos Linux clusters.
+</p>
 
+<p align="center">
 [Installation](#installation) &middot;
 [Features](#features) &middot;
 [Keybindings](#keybindings) &middot;
 [Configuration](#configuration) &middot;
 [License](#license)
+</p>
 
 ---
 
