@@ -117,7 +117,8 @@ CLI flags override the config file.
 | Key | Action |
 |-----|--------|
 | `q` / `Ctrl+C` | Quit |
-| `1`--`8` / `Left` / `Right` | Switch tab |
+| `1`--`8` / `Left` / `Right` | Switch tab (Dashboard, Nodes, Services, Logs, Containers, Network, Storage, etcd) |
+| `[` / `<` / `]` / `>` | Previous / next sub-tab (Network, Storage, etcd views) |
 | `C` | Switch context |
 | `?` | Help overlay |
 | `Ctrl+K` | Settings overlay |
@@ -132,7 +133,7 @@ CLI flags override the config file.
 | Key | Action |
 |-----|--------|
 | `F` | Toggle event follow mode |
-| `Up` / `Down` | Scroll events |
+| `Up` / `Down` / `j` / `k` | Scroll events |
 
 ### Nodes
 
@@ -174,8 +175,44 @@ CLI flags override the config file.
 | Key | Action |
 |-----|--------|
 | `Tab` / `Shift+Tab` | Switch between selectors and log pane |
-| `Space` | Toggle node or service selection |
+| `Space` / `Enter` | Toggle node or service selection |
+| `Up` / `Down` / `PgUp` / `PgDn` | Scroll log pane |
 | `F` | Toggle follow mode |
+| `Esc` | Back to selectors |
+
+### Containers
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Navigate |
+| `Enter` | View container detail |
+| `Ctrl+L` | View container logs |
+| `Esc` | Back to list |
+
+### Network / Storage
+
+| Key | Action |
+|-----|--------|
+| `[` / `]` | Previous / next sub-tab (per-node selection) |
+| `j` / `k` | Navigate |
+
+### etcd
+
+| Key | Action |
+|-----|--------|
+| `[` / `]` | Previous / next sub-tab |
+| `j` / `k` | Navigate |
+| `Ctrl+M` | Remove etcd member |
+
+### Upgrade wizard
+
+| Key | Action |
+|-----|--------|
+| `Up` / `Down` | Navigate |
+| `Space` / `Enter` | Select / start |
+| `Ctrl+P` | Pause upgrade |
+| `Ctrl+A` | Abort upgrade |
+| `Esc` | Back |
 
 ### Confirmation dialog
 
@@ -199,6 +236,9 @@ src/internal/
   config/         # App settings (config.yaml) + Talos config helpers
   talos/          # Talos gRPC client wrapper, context management
   cluster/        # Cluster-wide queries (members, health, targets)
+  node/           # Per-node helpers (containers, etc.)
+  etcd/           # etcd member queries and management
+  upgrade/        # Rolling upgrade orchestration
   resources/      # COSI resource helpers (CPU, memory, diagnostics)
   update/         # Self-update check with GitHub API + disk cache
   shared/         # Keys, styles, messages, thresholds, debug logging
@@ -208,10 +248,10 @@ src/internal/
     nodelist/       # Node list with detail view + live logs
     servicelist/    # Service list with grouping
     logviewer/      # Multi-node log streaming
-    containers/     # Container listing
-    network/        # Network interfaces and routes
-    storage/        # Disk and volume info
-    etcdview/       # etcd cluster members
+    containers/     # Container listing and detail
+    network/        # Network interfaces and routes (per-node sub-tabs)
+    storage/        # Disk and volume info (per-node sub-tabs)
+    etcdview/       # etcd cluster members (per-node sub-tabs)
     settings/       # Settings overlay (Ctrl+K)
     configview/     # Talosconfig context viewer
     configeditor/   # Node config YAML editor
