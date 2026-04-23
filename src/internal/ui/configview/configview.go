@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"os"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -64,6 +65,15 @@ func (m Model) Toggle() Model {
 func (m Model) load() Model {
 	m.contexts = nil
 	m.err = ""
+
+	// Reject missing files up front: talosclientconfig.Open would otherwise
+	// silently create an empty config at the given path.
+	if m.configPath != "" {
+		if _, err := os.Stat(m.configPath); err != nil {
+			m.err = err.Error()
+			return m
+		}
+	}
 
 	cfg, err := talosclientconfig.Open(m.configPath)
 	if err != nil {
