@@ -23,8 +23,9 @@ var (
 	// NodeColors provides 6 distinct colors for log viewer node identification.
 	NodeColors []color.Color
 
-	// PlainMode disables Unicode icons when true (set via --plain flag).
-	PlainMode bool
+	// plainMode disables Unicode icons when true (set via --plain flag).
+	// Use IsPlainMode() / SetPlainMode() to read/write.
+	plainMode bool
 )
 
 // Styles (Lip Gloss v2).
@@ -165,10 +166,20 @@ var statusIconMap = map[string]string{
 	"":         "?",
 }
 
+// IsPlainMode returns whether plain (ASCII-only) mode is active.
+func IsPlainMode() bool {
+	return plainMode
+}
+
+// SetPlainMode enables or disables plain (ASCII-only) mode.
+func SetPlainMode(v bool) {
+	plainMode = v
+}
+
 // StatusIcon returns a Unicode status indicator for the given status string.
-// Returns "" if PlainMode is true.
+// Returns "" if plain mode is active.
 func StatusIcon(status string) string {
-	if PlainMode {
+	if plainMode {
 		return ""
 	}
 	if icon, ok := statusIconMap[status]; ok {

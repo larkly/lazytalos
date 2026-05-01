@@ -16,7 +16,7 @@ func TestStatusIcon(t *testing.T) {
 		{"Unknown", "?"},
 	}
 
-	PlainMode = false
+	SetPlainMode(false)
 	for _, tt := range tests {
 		got := StatusIcon(tt.status)
 		if got != tt.want {
@@ -26,8 +26,8 @@ func TestStatusIcon(t *testing.T) {
 }
 
 func TestStatusIconPlainMode(t *testing.T) {
-	PlainMode = true
-	defer func() { PlainMode = false }()
+	SetPlainMode(true)
+	defer func() { SetPlainMode(false) }()
 
 	statuses := []string{"Running", "OK", "Stopped", "Failed", "Degraded", "", "Unknown"}
 	for _, s := range statuses {

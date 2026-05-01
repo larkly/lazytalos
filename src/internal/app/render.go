@@ -128,7 +128,7 @@ func (m Model) viewContent() string {
 	}
 	if len(lines) > 2 && m.latestVersion != "" {
 		var indicator string
-		if shared.PlainMode {
+		if shared.IsPlainMode() {
 			indicator = lipgloss.NewStyle().Foreground(shared.ColorWarning).
 				Render("(update: " + m.latestVersion + ")")
 		} else {
