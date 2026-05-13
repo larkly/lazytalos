@@ -98,7 +98,7 @@ func TestRender(t *testing.T) {
 
 func contains(s, sub string) bool {
 	// Strip ANSI for checking
-	_ = shared.PlainMode // ensure shared is used
+	_ = shared.IsPlainMode // ensure shared is used
 	return len(s) > 0 && len(sub) > 0 && findSubstring(s, sub)
 }
 

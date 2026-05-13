@@ -99,8 +99,9 @@ jobs:
           cp lazytalos-linux-${{ matrix.goarch }} lazytalos
 
       - name: Install nFPM
+        env:
+          NFPM_VERSION: "2.42.0"
         run: |
-          NFPM_VERSION=$(curl -sI https://github.com/goreleaser/nfpm/releases/latest | grep -i location | sed 's|.*/v||;s/\r//')
           curl -sL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" | sudo tar -xz -C /usr/local/bin nfpm
 
       - name: Build deb

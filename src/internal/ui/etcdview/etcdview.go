@@ -102,7 +102,7 @@ func (m Model) updateKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				}
 			}
 		}
-	// Left/Right: do not consume — let parent handle tab switching.
+		// Left/Right: do not consume — let parent handle tab switching.
 	}
 	return m, nil
 }
@@ -173,7 +173,7 @@ func (m Model) viewMembers() string {
 	}
 
 	leaderIcon := "★"
-	if shared.PlainMode {
+	if shared.IsPlainMode() {
 		leaderIcon = "*"
 	}
 
@@ -296,4 +296,3 @@ func (m Model) ForceRefresh() tea.Cmd {
 		return membersLoadedMsg{members: members, err: err}
 	}
 }
-

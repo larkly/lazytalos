@@ -7,18 +7,17 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbletea/v2"
+	"github.com/larkly/lazytalos/internal/cluster"
 	"github.com/larkly/lazytalos/internal/config"
 	"github.com/larkly/lazytalos/internal/etcd"
 	"github.com/larkly/lazytalos/internal/shared"
 	"github.com/larkly/lazytalos/internal/talos"
-	"github.com/larkly/lazytalos/internal/update"
-	"github.com/larkly/lazytalos/internal/cluster"
 	"github.com/larkly/lazytalos/internal/ui/clustergrid"
 	"github.com/larkly/lazytalos/internal/ui/configeditor"
+	"github.com/larkly/lazytalos/internal/ui/configview"
 	"github.com/larkly/lazytalos/internal/ui/containers"
 	"github.com/larkly/lazytalos/internal/ui/contextpicker"
 	"github.com/larkly/lazytalos/internal/ui/dashboard"
-	"github.com/larkly/lazytalos/internal/ui/configview"
 	"github.com/larkly/lazytalos/internal/ui/etcdview"
 	"github.com/larkly/lazytalos/internal/ui/help"
 	"github.com/larkly/lazytalos/internal/ui/logviewer"
@@ -27,9 +26,10 @@ import (
 	"github.com/larkly/lazytalos/internal/ui/nodelist"
 	"github.com/larkly/lazytalos/internal/ui/servicelist"
 	"github.com/larkly/lazytalos/internal/ui/settings"
-	upgradeui "github.com/larkly/lazytalos/internal/ui/upgrade"
 	"github.com/larkly/lazytalos/internal/ui/statusbar"
 	"github.com/larkly/lazytalos/internal/ui/storage"
+	upgradeui "github.com/larkly/lazytalos/internal/ui/upgrade"
+	"github.com/larkly/lazytalos/internal/update"
 )
 
 type activeView int
@@ -148,15 +148,15 @@ type Model struct {
 
 // Options configures the application.
 type Options struct {
-	Talosconfig          string
-	Context              string
-	RefreshInterval      time.Duration
-	PickContext           bool
-	Version              string
-	Plain                bool
-	NoUpdateCheck        bool
-	UpdateCheckInterval  time.Duration
-	AppConfig            *config.Config
+	Talosconfig         string
+	Context             string
+	RefreshInterval     time.Duration
+	PickContext         bool
+	Version             string
+	Plain               bool
+	NoUpdateCheck       bool
+	UpdateCheckInterval time.Duration
+	AppConfig           *config.Config
 }
 
 // ShouldRestart returns true if the app quit due to a restart request.
@@ -166,7 +166,7 @@ func (m Model) ShouldRestart() bool {
 
 // New creates the root model.
 func New(opts Options) Model {
-	shared.PlainMode = opts.Plain
+	shared.SetPlainMode(opts.Plain)
 
 	refresh := opts.RefreshInterval
 	if refresh == 0 {
@@ -183,17 +183,17 @@ func New(opts Options) Model {
 	}
 
 	m := Model{
-		view:            viewContextPicker,
-		statusBar:       statusbar.Model{Width: 0},
-		tabs:            tabs,
-		tabInited:       make([]bool, len(tabs)),
-		refreshInterval: refresh,
-		talosconfig:     opts.Talosconfig,
-		pickContext:     opts.PickContext,
-		version:         opts.Version,
-		selectedNodes:   make(map[string]bool),
-		help:            help.New(),
-		configView:      configview.New(opts.Talosconfig),
+		view:                viewContextPicker,
+		statusBar:           statusbar.Model{Width: 0},
+		tabs:                tabs,
+		tabInited:           make([]bool, len(tabs)),
+		refreshInterval:     refresh,
+		talosconfig:         opts.Talosconfig,
+		pickContext:         opts.PickContext,
+		version:             opts.Version,
+		selectedNodes:       make(map[string]bool),
+		help:                help.New(),
+		configView:          configview.New(opts.Talosconfig),
 		noUpdateCheck:       opts.NoUpdateCheck,
 		updateCheckInterval: opts.UpdateCheckInterval,
 		appConfig:           opts.AppConfig,

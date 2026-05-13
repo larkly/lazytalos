@@ -13,9 +13,9 @@ func ApplyAll(cfg Config) {
 	ApplyThresholds(cfg.Thresholds)
 }
 
-// ApplyGeneral sets shared.PlainMode from config.
+// ApplyGeneral sets shared plain mode from config.
 func ApplyGeneral(g GeneralConfig) {
-	shared.PlainMode = g.PlainMode
+	shared.SetPlainMode(g.PlainMode)
 }
 
 // ApplyColors sets shared.Color* vars and rebuilds shared.Style* vars.
